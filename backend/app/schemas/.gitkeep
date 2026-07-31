@@ -1,0 +1,3 @@
+# Schema files to be created:
+# auth.py, user.py, menu.py, category.py, cart.py, order.py, payment.py, coupon.py, complaint.py, notification.py
+

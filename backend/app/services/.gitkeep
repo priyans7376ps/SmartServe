@@ -1,0 +1,3 @@
+# Service files to be created:
+# auth_service.py, user_service.py, menu_service.py, order_service.py, payment_service.py, etc.
+

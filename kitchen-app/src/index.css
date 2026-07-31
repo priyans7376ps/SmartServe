@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans bg-[#0b0f17] text-slate-100 antialiased select-none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
+}
+
+/* Glass & Utilities */
+.glass-panel {
+  background: rgba(19, 27, 46, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.active-press {
+  transition: transform 0.15s ease-out;
+}
+.active-press:active {
+  transform: scale(0.97);
+}
+
+/* Custom Status Badges */
+.badge-pending {
+  @apply bg-amber-500/15 text-amber-400 border border-amber-500/30;
+}
+.badge-preparing {
+  @apply bg-blue-500/15 text-blue-400 border border-blue-500/30;
+}
+.badge-ready {
+  @apply bg-emerald-500/15 text-emerald-400 border border-emerald-500/30;
+}
+.badge-completed {
+  @apply bg-slate-800 text-slate-400 border border-slate-700;
+}
+.badge-cancelled {
+  @apply bg-rose-500/15 text-rose-400 border border-rose-500/30;
+}

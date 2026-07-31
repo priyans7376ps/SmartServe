@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --admin-primary: #1e40af;
+  --admin-sidebar: #1e293b;
+  --admin-bg: #f1f5f9;
+}
+
+body {
+  background-color: var(--admin-bg);
+}
+

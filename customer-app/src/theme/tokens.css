@@ -1,0 +1,70 @@
+/* Design Tokens – CSS Variables (light + dark) */
+:root {
+  /* Primary Palette */
+  --ds-primary-50:  #f5faff;
+  --ds-primary-100: #e0f7ff;
+  --ds-primary-200: #b8e9ff;
+  --ds-primary-300: #80d4ff;
+  --ds-primary-400: #4bb8ff;
+  --ds-primary-500: #1a94ff; /* main brand */
+  --ds-primary-600: #006ecc;
+  --ds-primary-700: #0055a3;
+  --ds-primary-800: #003e7a;
+  --ds-primary-900: #002b58;
+
+  /* Accent – Existing amber brand */
+  --ds-accent-50:   var(--brand-50);
+  --ds-accent-100:  var(--brand-100);
+  --ds-accent-200:  var(--brand-200);
+  --ds-accent-300:  var(--brand-300);
+  --ds-accent-400:  var(--brand-400);
+  --ds-accent-500:  var(--brand-500);
+  --ds-accent-600:  var(--brand-600);
+  --ds-accent-700:  var(--brand-700);
+  --ds-accent-800:  var(--brand-800);
+  --ds-accent-900:  var(--brand-900);
+
+  /* Functional Colors */
+  --ds-success-500: #10b981;   /* Emerald */
+  --ds-danger-500:  #ef4444;   /* Red */
+  --ds-warning-500: #f59e0b;   /* Amber */
+  --ds-info-500:    #3b82f6;   /* Blue */
+
+  /* Surfaces */
+  --ds-bg-primary:   var(--bg-primary);
+  --ds-bg-surface:   var(--bg-surface);
+  --ds-bg-card:      var(--bg-surface-elevated);
+  --ds-bg-overlay:   rgba(0,0,0,0.45);
+
+  /* Borders & Dividers */
+  --ds-border:       var(--border-subtle);
+  --ds-divider:      var(--border-subtle);
+
+  /* Text */
+  --ds-text-primary: var(--text-primary);
+  --ds-text-secondary: var(--text-secondary);
+  --ds-text-muted:   var(--text-muted);
+
+  /* Shadows */
+  --ds-shadow-sm:    var(--shadow-sm);
+  --ds-shadow-md:    var(--shadow-md);
+  --ds-shadow-glow:  var(--shadow-glow);
+
+  /* Radii */
+  --ds-radius-sm:    var(--radius-sm);
+  --ds-radius-md:    var(--radius-md);
+  --ds-radius-lg:    var(--radius-lg);
+  --ds-radius-full:  var(--radius-full);
+
+  /* Transition */
+  --ds-transition:   all 0.2s ease-in-out;
+}
+
+.dark {
+  /* Dark overrides */
+  --ds-bg-primary:   #090d16;
+  --ds-bg-surface:   #111827;
+  --ds-bg-card:      #1f2937;
+  --ds-text-primary: #f8fafc;
+  --ds-text-muted:   #64748b;
+}

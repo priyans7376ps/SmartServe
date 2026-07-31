@@ -1,0 +1,11 @@
+﻿node_modules/
+.vscode/
+.env
+.env.local
+*.log
+dist/
+build/
+__pycache__/
+*.egg-info/
+.DS_Store
+.idea/

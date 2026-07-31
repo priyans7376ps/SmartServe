@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --kitchen-primary: #059669;
+  --kitchen-bg: #f0fdf4;
+}
+
+body {
+  background-color: var(--kitchen-bg);
+}
+

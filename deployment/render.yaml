@@ -1,0 +1,61 @@
+# SmartServe Render Deployment Configuration
+
+services:
+  # Backend API
+  - type: web
+    name: smartserve-backend
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smartserve-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENVIRONMENT
+        value: production
+
+  # Customer App
+  - type: web
+    name: smartserve-customer
+    env: static
+    buildCommand: cd customer-app && npm install && npm run build
+    staticPublishPath: customer-app/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://smartserve-backend.onrender.com
+      - key: VITE_WS_URL
+        value: wss://smartserve-backend.onrender.com/ws
+
+  # Kitchen App
+  - type: web
+    name: smartserve-kitchen
+    env: static
+    buildCommand: cd kitchen-app && npm install && npm run build
+    staticPublishPath: kitchen-app/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://smartserve-backend.onrender.com
+      - key: VITE_WS_URL
+        value: wss://smartserve-backend.onrender.com/ws
+
+  # Admin App
+  - type: web
+    name: smartserve-admin
+    env: static
+    buildCommand: cd admin-app && npm install && npm run build
+    staticPublishPath: admin-app/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://smartserve-backend.onrender.com
+      - key: VITE_WS_URL
+        value: wss://smartserve-backend.onrender.com/ws
+
+databases:
+  - name: smartserve-db
+    databaseName: smartserve
+    user: smartserve
+    plan: free
+
