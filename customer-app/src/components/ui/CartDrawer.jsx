@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, Plus, Minus, Ticket, ArrowRight, ShoppingBag, CheckCircle2 } from 'lucide-react';
-import { useCartStore } from '../../store/useCartStore';
+import { useCart } from '../../hooks/useCart';
 import { useTableStore } from '../../store/useTableStore';
 import Button from './Button';
 import { cn } from '../../lib/cn';
@@ -62,30 +62,33 @@ export default function CartDrawer({ isOpen, onClose }) {
   const navigate = useNavigate();
   const { tableNumber } = useTableStore();
   const {
-    items, removeItem, updateQuantity,
-    coupon, applyCoupon, removeCoupon,
-    getSubtotal, getTax, getServiceCharge, getDiscount, getGrandTotal,
-  } = useCartStore();
+    items,
+    subtotal,
+    taxAmount,
+    discountAmount,
+    totalAmount,
+    couponCode,
+    updateQuantity,
+    removeItem,
+    applyCoupon,
+    removeCoupon,
+    isLoading,
+  } = useCart();
 
-  const [couponCode, setCouponCode]   = useState('');
+  const [inputCoupon, setInputCoupon] = useState('');
   const [couponError, setCouponError] = useState('');
 
-  const handleApplyCoupon = (e) => {
+  const handleApplyCoupon = async (e) => {
     e.preventDefault();
     setCouponError('');
-    const code = couponCode.trim().toUpperCase();
+    const code = inputCoupon.trim().toUpperCase();
     if (!code) return;
 
-    const VALID = {
-      WELCOME10: { code: 'WELCOME10', discount_type: 'percentage', discount_value: 10 },
-      FLAT5:     { code: 'FLAT5',     discount_type: 'flat',       discount_value: 5  },
-    };
-
-    if (VALID[code]) {
-      applyCoupon(VALID[code]);
-      setCouponCode('');
-    } else {
-      setCouponError('Invalid code. Try WELCOME10 or FLAT5.');
+    try {
+      await applyCoupon(code);
+      setInputCoupon('');
+    } catch (err) {
+      setCouponError(err.message || 'Invalid coupon code');
     }
   };
 
@@ -123,7 +126,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                 </div>
                 <div className="leading-none">
                   <h2 className="text-subtitle font-bold text-ink-primary">Your Cart</h2>
-                  <p className="text-caption text-ink-muted mt-0.5">Table {tableNumber}</p>
+                  <p className="text-caption text-ink-muted mt-0.5">Table #{tableNumber}</p>
                 </div>
               </div>
               <button
@@ -138,7 +141,6 @@ export default function CartDrawer({ isOpen, onClose }) {
             {/* ── ITEM LIST ──────────────────────── */}
             <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-none">
               {items.length === 0 ? (
-                /* Empty state */
                 <div className="flex flex-col items-center justify-center h-full text-center py-16 gap-4">
                   <div className="w-20 h-20 rounded-3xl bg-brand-50 dark:bg-brand-950/30 flex items-center justify-center">
                     <ShoppingBag className="w-10 h-10 text-brand-400" aria-hidden="true" />
@@ -155,48 +157,52 @@ export default function CartDrawer({ isOpen, onClose }) {
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
-                  {items.map(({ item, quantity }) => (
-                    <motion.div
-                      key={item.id}
-                      layout
-                      initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                      animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
-                      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                      transition={springs.smooth}
-                      className="flex gap-3 p-3.5 bg-surface-2 border border-subtle rounded-2xl overflow-hidden"
-                    >
-                      <img
-                        src={item.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=200&q=80'}
-                        alt={item.name}
-                        className="w-16 h-16 rounded-xl object-cover shrink-0 border border-subtle"
-                        loading="lazy"
-                      />
-                      <div className="flex-1 flex flex-col justify-between min-w-0">
-                        <div className="flex items-start justify-between gap-1">
-                          <h4 className="text-caption font-bold text-ink-primary line-clamp-1 flex-1">
-                            {item.name}
-                          </h4>
-                          <button
-                            onClick={() => removeItem(item.id)}
-                            className="p-1 text-ink-muted hover:text-error-500 transition-colors rounded-md touch-target shrink-0"
-                            aria-label={`Remove ${item.name}`}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                          </button>
+                  {items.map((cartItem) => {
+                    const itemPrice = cartItem.unit_price ?? 0;
+                    const totalItemPrice = cartItem.subtotal ?? itemPrice * cartItem.quantity;
+                    return (
+                      <motion.div
+                        key={cartItem.id}
+                        layout
+                        initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                        animate={{ opacity: 1, height: 'auto', marginBottom: 12 }}
+                        exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                        transition={springs.smooth}
+                        className="flex gap-3 p-3.5 bg-surface-2 border border-subtle rounded-2xl overflow-hidden"
+                      >
+                        <img
+                          src={cartItem.menu_item_image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=200&q=80'}
+                          alt={cartItem.menu_item_name || 'Dish'}
+                          className="w-16 h-16 rounded-xl object-cover shrink-0 border border-subtle"
+                          loading="lazy"
+                        />
+                        <div className="flex-1 flex flex-col justify-between min-w-0">
+                          <div className="flex items-start justify-between gap-1">
+                            <h4 className="text-caption font-bold text-ink-primary line-clamp-1 flex-1">
+                              {cartItem.menu_item_name}
+                            </h4>
+                            <button
+                              onClick={() => removeItem(cartItem.id)}
+                              className="p-1 text-ink-muted hover:text-error-500 transition-colors rounded-md touch-target shrink-0"
+                              aria-label={`Remove ${cartItem.menu_item_name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between mt-2 gap-2">
+                            <span className="text-caption font-black text-brand-500">
+                              ₹{Number(totalItemPrice).toFixed(2)}
+                            </span>
+                            <QuantityStepper
+                              quantity={cartItem.quantity}
+                              onDecrease={() => updateQuantity(cartItem.id, cartItem.quantity - 1)}
+                              onIncrease={() => updateQuantity(cartItem.id, cartItem.quantity + 1)}
+                            />
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between mt-2 gap-2">
-                          <span className="text-caption font-black text-brand-500">
-                            ${(item.price * quantity).toFixed(2)}
-                          </span>
-                          <QuantityStepper
-                            quantity={quantity}
-                            onDecrease={() => updateQuantity(item.id, -1)}
-                            onIncrease={() => updateQuantity(item.id, 1)}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               )}
             </div>
@@ -205,11 +211,11 @@ export default function CartDrawer({ isOpen, onClose }) {
             {items.length > 0 && (
               <div className="border-t border-subtle bg-surface-0 p-6 space-y-5">
                 {/* Coupon */}
-                {coupon ? (
+                {couponCode ? (
                   <div className="flex items-center justify-between p-3.5 bg-success-bg border border-success-border rounded-2xl">
                     <div className="flex items-center gap-2 text-caption font-bold text-success-text">
                       <CheckCircle2 className="w-4 h-4 shrink-0" aria-hidden="true" />
-                      <span>'{coupon.code}' applied</span>
+                      <span>'{couponCode}' applied</span>
                     </div>
                     <button
                       onClick={removeCoupon}
@@ -226,8 +232,8 @@ export default function CartDrawer({ isOpen, onClose }) {
                       <input
                         type="text"
                         placeholder="Coupon code"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value)}
+                        value={inputCoupon}
+                        onChange={(e) => setInputCoupon(e.target.value)}
                         aria-label="Coupon code"
                         aria-describedby={couponError ? 'coupon-error' : undefined}
                         className={cn(
@@ -241,6 +247,7 @@ export default function CartDrawer({ isOpen, onClose }) {
                     </div>
                     <button
                       type="submit"
+                      disabled={isLoading}
                       className="h-10 px-4 rounded-xl bg-ink-primary hover:bg-brand-600 text-ink-inverse text-caption font-bold transition-colors touch-target"
                     >
                       Apply
@@ -255,13 +262,12 @@ export default function CartDrawer({ isOpen, onClose }) {
 
                 {/* Price breakdown */}
                 <div className="space-y-2">
-                  <PriceRow label="Subtotal"          value={`$${getSubtotal().toFixed(2)}`} />
-                  <PriceRow label="GST (8%)"          value={`$${getTax().toFixed(2)}`} />
-                  <PriceRow label="Service charge (5%)" value={`$${getServiceCharge().toFixed(2)}`} />
-                  {getDiscount() > 0 && (
-                    <PriceRow label="Discount" value={`-$${getDiscount().toFixed(2)}`} variant="discount" />
+                  <PriceRow label="Subtotal"          value={`₹${Number(subtotal).toFixed(2)}`} />
+                  <PriceRow label="GST (5%)"          value={`₹${Number(taxAmount).toFixed(2)}`} />
+                  {discountAmount > 0 && (
+                    <PriceRow label="Discount" value={`-₹${Number(discountAmount).toFixed(2)}`} variant="discount" />
                   )}
-                  <PriceRow label="Grand Total" value={`$${getGrandTotal().toFixed(2)}`} variant="total" />
+                  <PriceRow label="Grand Total" value={`₹${Number(totalAmount).toFixed(2)}`} variant="total" />
                 </div>
 
                 <Button

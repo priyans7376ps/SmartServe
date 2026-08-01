@@ -1,55 +1,63 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CreditCard, DollarSign, QrCode, CheckCircle2, ShieldCheck, ArrowRight, Utensils } from 'lucide-react';
-import { useCartStore } from '../store/useCartStore';
+import { useCart } from '../hooks/useCart';
+import { useCheckout } from '../hooks/useCheckout';
 import { useTableStore } from '../store/useTableStore';
 import { useAuthStore } from '../store/useAuthStore';
 import Button from '../components/ui/Button';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { tableNumber, restaurantName } = useTableStore();
   const { user } = useAuthStore();
-  const {
-    items,
-    specialInstructions,
-    getSubtotal,
-    getTax,
-    getServiceCharge,
-    getDiscount,
-    getGrandTotal,
-    clearCart,
-  } = useCartStore();
+  const { items, subtotal, taxAmount, discountAmount, totalAmount } = useCart();
+  const { placeOrder, isPlacingOrder } = useCheckout();
 
   const [paymentMethod, setPaymentMethod] = useState('pay_at_table');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [customerName, setCustomerName] = useState(user?.full_name || '');
+  const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
+  const [errorMessage, setErrorMessage] = useState('');
 
   if (items.length === 0) {
     navigate('/cart');
     return null;
   }
 
-  const handlePlaceOrder = (e) => {
+  const handlePlaceOrder = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    setErrorMessage('');
 
-    setTimeout(() => {
-      const tokenNumber = Math.floor(1000 + Math.random() * 9000);
-      const orderData = {
+    try {
+      const orderPayload = {
+        order_type: 'dine_in',
+        customer_name: customerName || 'Guest Customer',
+        customer_phone: customerPhone || null,
+        customer_email: user?.email || null,
+        notes: location.state?.specialInstructions || null,
+        payment_method: paymentMethod === 'pay_at_table' ? 'cash' : paymentMethod,
+      };
+
+      const res = await placeOrder(orderPayload);
+      const tokenNumber = res.order_number ? res.order_number.slice(-4) : Math.floor(1000 + Math.random() * 9000);
+
+      localStorage.setItem('active_order', JSON.stringify({
+        order_id: res.order_id,
+        order_number: res.order_number,
         tokenNumber,
         tableNumber,
-        grandTotal: getGrandTotal(),
+        grandTotal: res.total_amount || totalAmount,
         itemCount: items.length,
         paymentMethod,
         timestamp: new Date().toISOString(),
-      };
+      }));
 
-      localStorage.setItem('active_order', JSON.stringify(orderData));
-      clearCart();
-      setIsSubmitting(false);
-      navigate(`/order-success?token=${tokenNumber}`);
-    }, 1200);
+      navigate(`/order-success?order_id=${res.order_id}&token=${tokenNumber}`);
+    } catch (err) {
+      setErrorMessage(err.message || 'Failed to place order. Please try again.');
+    }
   };
 
   return (
@@ -79,18 +87,28 @@ export default function CheckoutPage() {
           {/* Customer Info Card */}
           <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
             <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-              Customer Information
+              Customer Details
             </h3>
-            <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
               <div>
-                <span className="block text-[10px] text-slate-400 uppercase font-bold">Name</span>
-                <span className="text-slate-900 dark:text-white font-extrabold">
-                  {user?.full_name || 'Guest Diner'}
-                </span>
+                <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Your Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
+                />
               </div>
               <div>
-                <span className="block text-[10px] text-slate-400 uppercase font-bold">Table</span>
-                <span className="text-amber-500 font-extrabold">Table #{tableNumber}</span>
+                <label className="block text-[10px] text-slate-400 uppercase font-bold mb-1">Phone Number (Optional)</label>
+                <input
+                  type="tel"
+                  placeholder="Enter phone number"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
+                />
               </div>
             </div>
           </div>
@@ -98,7 +116,7 @@ export default function CheckoutPage() {
           {/* Payment Method Selector */}
           <div className="p-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
             <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-              Payment Method (Placeholder)
+              Payment Method
             </h3>
 
             <div className="space-y-3">
@@ -129,9 +147,9 @@ export default function CheckoutPage() {
 
               <motion.label
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setPaymentMethod('upi_qr')}
+                onClick={() => setPaymentMethod('upi')}
                 className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all touch-target ${
-                  paymentMethod === 'upi_qr'
+                  paymentMethod === 'upi'
                     ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
                 }`}
@@ -149,7 +167,7 @@ export default function CheckoutPage() {
                     </span>
                   </div>
                 </div>
-                {paymentMethod === 'upi_qr' && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
+                {paymentMethod === 'upi' && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
               </motion.label>
 
               <motion.label
@@ -188,16 +206,16 @@ export default function CheckoutPage() {
             </h3>
 
             <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-              {items.map(({ item, quantity }) => (
-                <div key={item.id} className="flex items-center justify-between text-xs font-semibold">
+              {items.map((it) => (
+                <div key={it.id} className="flex items-center justify-between text-xs font-semibold">
                   <div className="flex items-center gap-2">
                     <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 font-bold flex items-center justify-center">
-                      {quantity}
+                      {it.quantity}
                     </span>
-                    <span className="text-slate-800 dark:text-slate-200 line-clamp-1">{item.name}</span>
+                    <span className="text-slate-800 dark:text-slate-200 line-clamp-1">{it.menu_item_name}</span>
                   </div>
                   <span className="font-extrabold text-slate-900 dark:text-white">
-                    ${(item.price * quantity).toFixed(2)}
+                    ₹{Number(it.subtotal || it.unit_price * it.quantity).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -207,30 +225,34 @@ export default function CheckoutPage() {
             <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>${getSubtotal().toFixed(2)}</span>
+                <span>₹{Number(subtotal).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Taxes & Charges</span>
-                <span>${(getTax() + getServiceCharge()).toFixed(2)}</span>
+                <span>GST Tax (5%)</span>
+                <span>₹{Number(taxAmount).toFixed(2)}</span>
               </div>
-              {getDiscount() > 0 && (
+              {discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-bold">
                   <span>Discount</span>
-                  <span>-${getDiscount().toFixed(2)}</span>
+                  <span>-₹{Number(discountAmount).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-800 text-lg font-black text-slate-900 dark:text-white">
                 <span>Total Amount</span>
-                <span className="text-amber-500 text-lg">${getGrandTotal().toFixed(2)}</span>
+                <span className="text-amber-500 text-lg">₹{Number(totalAmount).toFixed(2)}</span>
               </div>
             </div>
+
+            {errorMessage && (
+              <p className="text-xs font-bold text-red-500 text-center">{errorMessage}</p>
+            )}
 
             <Button
               variant="primary"
               size="lg"
               className="w-full"
               onClick={handlePlaceOrder}
-              isLoading={isSubmitting}
+              isLoading={isPlacingOrder}
               icon={ArrowRight}
             >
               Place Order Now

@@ -3,24 +3,25 @@ import api from '../api/axios';
 
 export const useAuthStore = create((set, get) => ({
   user: JSON.parse(localStorage.getItem('kitchen_user') || 'null'),
-  token: localStorage.getItem('kitchen_token') || null,
-  isAuthenticated: !!localStorage.getItem('kitchen_token'),
+  token: localStorage.getItem('kitchen_access_token') || localStorage.getItem('kitchen_token') || null,
+  isAuthenticated: !!(localStorage.getItem('kitchen_access_token') || localStorage.getItem('kitchen_token')),
   isLoading: false,
   error: null,
 
   login: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await api.post('/auth/login', { email, password });
-      const { access_token, user } = response.data;
+      const response = await api.post('/kitchen/auth/login', { email, password });
+      const { access_token, refresh_token, user } = response.data;
 
-      // Verify role is kitchen or admin
       const role = user?.role?.toLowerCase();
-      if (role !== 'kitchen' && role !== 'admin') {
+      if (role !== 'kitchen' && role !== 'admin' && role !== 'super_admin') {
         throw new Error('Access denied. Kitchen staff or Admin privileges required.');
       }
 
+      localStorage.setItem('kitchen_access_token', access_token);
       localStorage.setItem('kitchen_token', access_token);
+      if (refresh_token) localStorage.setItem('kitchen_refresh_token', refresh_token);
       localStorage.setItem('kitchen_user', JSON.stringify(user));
 
       set({
@@ -39,8 +40,13 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    try {
+      await api.post('/kitchen/auth/logout');
+    } catch (e) {}
+    localStorage.removeItem('kitchen_access_token');
     localStorage.removeItem('kitchen_token');
+    localStorage.removeItem('kitchen_refresh_token');
     localStorage.removeItem('kitchen_user');
     set({
       token: null,
@@ -51,7 +57,7 @@ export const useAuthStore = create((set, get) => ({
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('kitchen_token');
+    const token = localStorage.getItem('kitchen_access_token') || localStorage.getItem('kitchen_token');
     if (!token) {
       get().logout();
       return;
@@ -65,20 +71,7 @@ export const useAuthStore = create((set, get) => ({
         set({ user, isAuthenticated: true });
       }
     } catch (err) {
-      // If endpoint fails, fall back to me endpoint
-      try {
-        const meRes = await api.get('/auth/me');
-        const user = meRes.data;
-        const role = user?.role?.toLowerCase();
-        if (role === 'kitchen' || role === 'admin') {
-          localStorage.setItem('kitchen_user', JSON.stringify(user));
-          set({ user, isAuthenticated: true });
-        } else {
-          get().logout();
-        }
-      } catch (e) {
-        get().logout();
-      }
+      get().logout();
     }
   },
 

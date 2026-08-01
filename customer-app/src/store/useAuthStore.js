@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api from '../api/axios';
+import { authApi } from '../api/auth.api';
 
 export const useAuthStore = create((set, get) => ({
   user: JSON.parse(localStorage.getItem('user')) || null,
@@ -10,7 +10,7 @@ export const useAuthStore = create((set, get) => ({
   error: null,
 
   setAuth: (user, accessToken, refreshToken) => {
-    localStorage.setItem('access_token', accessToken);
+    if (accessToken) localStorage.setItem('access_token', accessToken);
     if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
     if (user) localStorage.setItem('user', JSON.stringify(user));
 
@@ -18,21 +18,28 @@ export const useAuthStore = create((set, get) => ({
       user,
       accessToken,
       refreshToken,
-      isAuthenticated: true,
+      isAuthenticated: !!accessToken,
       error: null,
     });
   },
 
-  guestLogin: async (tableId = null) => {
+  guestLogin: async (sessionId = null) => {
     set({ isLoading: true, error: null });
     try {
-      const res = await api.post('/auth/guest', { table_id: tableId });
-      const { access_token, user } = res.data;
-      get().setAuth(user, access_token, null);
+      const data = await authApi.guestLogin(sessionId);
+      const { access_token, session_id } = data;
+      const guestUser = {
+        id: session_id,
+        full_name: 'Guest Customer',
+        email: `${session_id}@guest.smartserve`,
+        role: 'customer',
+        is_guest: true,
+      };
+      get().setAuth(guestUser, access_token, null);
       set({ isLoading: false });
-      return user;
+      return guestUser;
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Guest login failed.';
+      const msg = err.response?.data?.detail || 'Guest session initialization failed.';
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
@@ -41,29 +48,29 @@ export const useAuthStore = create((set, get) => ({
   login: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
-      const res = await api.post('/auth/login', { email, password });
-      const { access_token, refresh_token, user } = res.data;
+      const data = await authApi.login({ email, password });
+      const { access_token, refresh_token, user } = data;
       get().setAuth(user, access_token, refresh_token);
       set({ isLoading: false });
       return user;
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Login failed.';
+      const msg = err.response?.data?.detail || 'Login failed. Please check credentials.';
       set({ error: msg, isLoading: false });
       throw new Error(msg);
     }
   },
 
-  signup: async (full_name, email, password, phone = null) => {
+  signup: async (fullName, email, password, phone = null) => {
     set({ isLoading: true, error: null });
     try {
-      const res = await api.post('/auth/signup', {
-        full_name,
+      const data = await authApi.signup({
+        full_name: fullName,
         email,
         password,
         phone,
         role: 'customer',
       });
-      const { access_token, refresh_token, user } = res.data;
+      const { access_token, refresh_token, user } = data;
       get().setAuth(user, access_token, refresh_token);
       set({ isLoading: false });
       return user;
@@ -75,6 +82,11 @@ export const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    try {
+      authApi.logout();
+    } catch (e) {
+      // ignore
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
@@ -85,5 +97,10 @@ export const useAuthStore = create((set, get) => ({
       isAuthenticated: false,
       error: null,
     });
+  },
+
+  updateUser: (updatedUser) => {
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    set({ user: updatedUser });
   },
 }));

@@ -20,7 +20,7 @@ async def create_category(
 
 @router.get("/", response_model=List[CategoryResponse], summary="List categories for a restaurant")
 async def list_categories(
-    restaurant_id: uuid.UUID = Query(..., description="Restaurant UUID"),
+    restaurant_id: Optional[uuid.UUID] = Query(None, description="Restaurant UUID"),
     active_only: bool = Query(True, description="Filter active categories"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),

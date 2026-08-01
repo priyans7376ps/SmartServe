@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Flame, Star, Tag, ArrowRight, Utensils, Sparkles } from 'lucide-react';
-import api from '../api/axios';
+import { useCategories } from '../hooks/useCategories';
+import { useMenu } from '../hooks/useMenu';
 import FoodCard from '../components/ui/FoodCard';
 import CategoryCard from '../components/ui/CategoryCard';
 import Button from '../components/ui/Button';
-import { FoodCardSkeleton, CategorySkeleton, PromoCardSkeleton, BannerSkeleton } from '../components/ui/SkeletonLoaders';
+import { FoodCardSkeleton, CategorySkeleton, BannerSkeleton } from '../components/ui/SkeletonLoaders';
 import { cn } from '../lib/cn';
 import { pageVariants, staggerContainer, staggerItem } from '../lib/motion';
 
@@ -44,9 +45,7 @@ function PromoCard({ gradient, badge, title, subtitle, icon: Icon }) {
         gradient,
       )}
     >
-      {/* Background glow */}
       <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
-
       <div className="relative z-10 flex items-center justify-between gap-3">
         <div className="space-y-1 flex-1 min-w-0">
           <span className="inline-block px-2 py-0.5 bg-white/20 rounded-full text-label font-bold uppercase tracking-wider">
@@ -66,33 +65,12 @@ function PromoCard({ gradient, badge, title, subtitle, icon: Icon }) {
 /* ── HOME PAGE ───────────────────────────────────────── */
 export default function HomePage({ onOpenSearch }) {
   const navigate = useNavigate();
-  const [categories, setCategories] = useState([]);
-  const [todaysSpecials, setTodaysSpecials] = useState([]);
-  const [recommendedItems, setRecommendedItems] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchData() {
-      setIsLoading(true);
-      try {
-        const [catRes, menuRes] = await Promise.all([
-          api.get('/categories/'),
-          api.get('/menu/'),
-        ]);
-        const cats = catRes.data || [];
-        const menuItems = menuRes.data?.items || [];
-        setCategories(cats);
-        setTodaysSpecials(menuItems.filter((i) => i.is_todays_special));
-        setRecommendedItems(menuItems.slice(0, 6));
-      } catch (err) {
-        console.error('Failed to load home page data:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
+  const { categories, isLoading: isLoadingCats } = useCategories();
+  const { specials, recommended, isLoadingSpecials, isLoadingRecommended } = useMenu();
+
+  const isLoading = isLoadingCats || isLoadingSpecials || isLoadingRecommended;
 
   return (
     <motion.div
@@ -105,13 +83,11 @@ export default function HomePage({ onOpenSearch }) {
           <BannerSkeleton />
         ) : (
           <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-[#1a0f00] to-slate-950 text-white shadow-2xl">
-            {/* Background radial glow */}
             <div className="absolute inset-0 pointer-events-none">
               <div className="absolute top-0 right-0 w-3/4 h-full bg-[radial-gradient(ellipse_at_top_right,_rgba(245,158,11,0.18),_transparent_70%)]" />
               <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-[radial-gradient(ellipse_at_bottom_left,_rgba(245,158,11,0.1),_transparent_70%)]" />
             </div>
 
-            {/* Decorative circles */}
             <div className="absolute top-4 right-4 w-64 h-64 rounded-full border border-white/5 pointer-events-none" aria-hidden="true" />
             <div className="absolute -bottom-8 -right-8 w-48 h-48 rounded-full border border-white/5 pointer-events-none" aria-hidden="true" />
 
@@ -121,7 +97,6 @@ export default function HomePage({ onOpenSearch }) {
               transition={{ duration: 0.5, ease: [0.25, 1, 0.5, 1] }}
               className="relative z-10 p-6 sm:p-10 max-w-2xl"
             >
-              {/* Tag pill */}
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-500/15 border border-brand-500/30 rounded-full text-brand-400 text-label font-bold uppercase tracking-wider mb-4">
                 <Sparkles className="w-3 h-3" aria-hidden="true" />
                 Table-side Digital Ordering
@@ -175,9 +150,9 @@ export default function HomePage({ onOpenSearch }) {
         />
         <PromoCard
           gradient="bg-gradient-to-br from-brand-600 to-orange-600"
-          badge="FLAT $5 OFF"
-          title="Use Coupon: FLAT5"
-          subtitle="$5 off orders above $30!"
+          badge="FLAT ₹50 OFF"
+          title="Use Coupon: FLAT50"
+          subtitle="₹50 off orders above ₹300!"
           icon={Sparkles}
         />
       </motion.div>
@@ -199,7 +174,7 @@ export default function HomePage({ onOpenSearch }) {
             isActive={!selectedCategory}
             onClick={() => setSelectedCategory(null)}
           />
-          {isLoading
+          {isLoadingCats
             ? Array.from({ length: 5 }).map((_, i) => <CategorySkeleton key={i} />)
             : categories.map((cat) => (
                 <CategoryCard
@@ -216,7 +191,7 @@ export default function HomePage({ onOpenSearch }) {
       </Section>
 
       {/* ── TODAY'S SPECIALS ─────────────────── */}
-      {(isLoading || todaysSpecials.length > 0) && (
+      {(isLoadingSpecials || specials.length > 0) && (
         <Section
           title="Today's Specials"
           icon={Flame}
@@ -230,9 +205,9 @@ export default function HomePage({ onOpenSearch }) {
             animate="animate"
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
           >
-            {isLoading
+            {isLoadingSpecials
               ? Array.from({ length: 3 }).map((_, i) => <FoodCardSkeleton key={i} />)
-              : todaysSpecials.map((item) => <FoodCard key={item.id} item={item} />)}
+              : specials.map((item) => <FoodCard key={item.id} item={item} />)}
           </motion.div>
         </Section>
       )}
@@ -251,9 +226,9 @@ export default function HomePage({ onOpenSearch }) {
           animate="animate"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
         >
-          {isLoading
+          {isLoadingRecommended
             ? Array.from({ length: 6 }).map((_, i) => <FoodCardSkeleton key={i} />)
-            : recommendedItems.map((item) => <FoodCard key={item.id} item={item} />)}
+            : recommended.map((item) => <FoodCard key={item.id} item={item} />)}
         </motion.div>
       </Section>
     </motion.div>

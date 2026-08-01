@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Plus, Minus, Ticket, ArrowRight, ArrowLeft, UtensilsCrossed, MessageSquare } from 'lucide-react';
-import { useCartStore } from '../store/useCartStore';
+import { useCart } from '../hooks/useCart';
+import { useCoupons } from '../hooks/useCoupons';
 import { useTableStore } from '../store/useTableStore';
 import Button from '../components/ui/Button';
 
@@ -11,45 +12,35 @@ export default function CartPage() {
   const { tableNumber, restaurantName } = useTableStore();
   const {
     items,
-    removeItem,
+    subtotal,
+    taxAmount,
+    discountAmount,
+    totalAmount,
+    couponCode,
     updateQuantity,
-    setNotes,
-    coupon,
+    removeItem,
     applyCoupon,
     removeCoupon,
-    specialInstructions,
-    setSpecialInstructions,
-    getSubtotal,
-    getTax,
-    getServiceCharge,
-    getDiscount,
-    getGrandTotal,
-  } = useCartStore();
+    isLoading,
+    error: cartError,
+  } = useCart();
 
-  const [couponCode, setCouponCode] = useState('');
+  const { coupons } = useCoupons();
+
+  const [inputCoupon, setInputCoupon] = useState('');
   const [couponError, setCouponError] = useState('');
+  const [specialInstructions, setSpecialInstructions] = useState('');
 
-  const handleApplyCoupon = (e) => {
+  const handleApplyCoupon = async (e) => {
     e.preventDefault();
     setCouponError('');
-    if (!couponCode.trim()) return;
+    if (!inputCoupon.trim()) return;
 
-    if (couponCode.toUpperCase() === 'WELCOME10') {
-      applyCoupon({
-        code: 'WELCOME10',
-        discount_type: 'percentage',
-        discount_value: 10,
-      });
-      setCouponCode('');
-    } else if (couponCode.toUpperCase() === 'FLAT5') {
-      applyCoupon({
-        code: 'FLAT5',
-        discount_type: 'flat',
-        discount_value: 5,
-      });
-      setCouponCode('');
-    } else {
-      setCouponError('Invalid coupon code. Try WELCOME10 or FLAT5');
+    try {
+      await applyCoupon(inputCoupon.trim().toUpperCase());
+      setInputCoupon('');
+    } catch (err) {
+      setCouponError(err.message || 'Invalid coupon code');
     }
   };
 
@@ -107,84 +98,77 @@ export default function CartPage() {
         <div className="lg:col-span-2 space-y-6">
           <div className="space-y-4">
             <AnimatePresence>
-              {items.map(({ item, quantity, notes }) => (
-                <motion.div
-                  key={item.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row gap-4 justify-between"
-                >
-                  <div className="flex gap-4">
-                    <img
-                      src={item.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=200&q=80'}
-                      alt={item.name}
-                      className="w-20 h-20 rounded-2xl object-cover shrink-0"
-                    />
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`w-2.5 h-2.5 rounded-full ${
-                            item.is_vegetarian ? 'bg-emerald-500' : 'bg-red-500'
-                          }`}
-                        />
-                        <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-                          {item.name}
-                        </h3>
+              {items.map((cartItem) => {
+                const itemPrice = cartItem.unit_price ?? 0;
+                const totalItemPrice = cartItem.subtotal ?? itemPrice * cartItem.quantity;
+                return (
+                  <motion.div
+                    key={cartItem.id}
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="p-5 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row gap-4 justify-between"
+                  >
+                    <div className="flex gap-4">
+                      <img
+                        src={cartItem.menu_item_image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=200&q=80'}
+                        alt={cartItem.menu_item_name || 'Dish'}
+                        className="w-20 h-20 rounded-2xl object-cover shrink-0"
+                      />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                            {cartItem.menu_item_name}
+                          </h3>
+                        </div>
+                        {cartItem.notes && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                            Note: {cartItem.notes}
+                          </p>
+                        )}
+                        <span className="font-black text-amber-500 text-sm block">
+                          ₹{Number(itemPrice).toFixed(2)} each
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-400 line-clamp-1 font-medium">
-                        {item.description}
-                      </p>
-                      <span className="font-black text-amber-500 text-sm block">
-                        ${Number(item.price).toFixed(2)} each
+                    </div>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between gap-3 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 dark:border-slate-800">
+                      <span className="font-black text-slate-900 dark:text-white text-base">
+                        ₹{Number(totalItemPrice).toFixed(2)}
                       </span>
 
-                      <input
-                        type="text"
-                        placeholder="Add note (e.g. Extra spicy, no onions)..."
-                        value={notes || ''}
-                        onChange={(e) => setNotes(item.id, e.target.value)}
-                        className="mt-2 w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1">
+                          <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => updateQuantity(cartItem.id, cartItem.quantity - 1)}
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors text-slate-700 dark:text-slate-300 font-bold touch-target"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </motion.button>
+                          <span className="w-6 text-center font-black text-xs">{cartItem.quantity}</span>
+                          <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            onClick={() => updateQuantity(cartItem.id, cartItem.quantity + 1)}
+                            className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors text-slate-700 dark:text-slate-300 font-bold touch-target"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </motion.button>
+                        </div>
 
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-3 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 dark:border-slate-800">
-                    <span className="font-black text-slate-900 dark:text-white text-base">
-                      ${(item.price * quantity).toFixed(2)}
-                    </span>
-
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-1">
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => updateQuantity(item.id, -1)}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors text-slate-700 dark:text-slate-300 font-bold touch-target"
+                        <button
+                          onClick={() => removeItem(cartItem.id)}
+                          className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors touch-target"
+                          title="Remove item"
                         >
-                          <Minus className="w-3.5 h-3.5" />
-                        </motion.button>
-                        <span className="w-6 text-center font-black text-xs">{quantity}</span>
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => updateQuantity(item.id, 1)}
-                          className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 hover:bg-amber-500 hover:text-white flex items-center justify-center transition-colors text-slate-700 dark:text-slate-300 font-bold touch-target"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </motion.button>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-
-                      <button
-                        onClick={() => removeItem(item.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors touch-target"
-                        title="Remove item"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
 
@@ -212,11 +196,11 @@ export default function CartPage() {
             </h3>
 
             <div>
-              {coupon ? (
+              {couponCode ? (
                 <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-center justify-between text-xs font-bold text-emerald-700 dark:text-emerald-300">
                   <div className="flex items-center gap-2">
                     <Ticket className="w-4 h-4" />
-                    <span>Coupon '{coupon.code}' Applied!</span>
+                    <span>Coupon '{couponCode}' Applied!</span>
                   </div>
                   <button
                     onClick={removeCoupon}
@@ -230,11 +214,11 @@ export default function CartPage() {
                   <input
                     type="text"
                     placeholder="Coupon Code"
-                    value={couponCode}
-                    onChange={(e) => setCouponCode(e.target.value)}
+                    value={inputCoupon}
+                    onChange={(e) => setInputCoupon(e.target.value)}
                     className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 uppercase"
                   />
-                  <Button type="submit" variant="secondary" size="md">
+                  <Button type="submit" variant="secondary" size="md" disabled={isLoading}>
                     Apply
                   </Button>
                 </form>
@@ -247,30 +231,25 @@ export default function CartPage() {
               <div className="flex justify-between">
                 <span>Items Subtotal</span>
                 <span className="font-bold text-slate-900 dark:text-white">
-                  ${getSubtotal().toFixed(2)}
+                  ₹{Number(subtotal).toFixed(2)}
                 </span>
               </div>
 
               <div className="flex justify-between">
-                <span>GST Tax (8%)</span>
-                <span>${getTax().toFixed(2)}</span>
+                <span>GST Tax (5%)</span>
+                <span>₹{Number(taxAmount).toFixed(2)}</span>
               </div>
 
-              <div className="flex justify-between">
-                <span>Service Charge (5%)</span>
-                <span>${getServiceCharge().toFixed(2)}</span>
-              </div>
-
-              {getDiscount() > 0 && (
+              {discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
                   <span>Discount</span>
-                  <span>-${getDiscount().toFixed(2)}</span>
+                  <span>-₹{Number(discountAmount).toFixed(2)}</span>
                 </div>
               )}
 
               <div className="flex justify-between items-center pt-3 border-t border-slate-200 dark:border-slate-800 text-lg font-black text-slate-900 dark:text-white">
                 <span>Grand Total</span>
-                <span className="text-amber-500 text-xl">${getGrandTotal().toFixed(2)}</span>
+                <span className="text-amber-500 text-xl">₹{Number(totalAmount).toFixed(2)}</span>
               </div>
             </div>
 
@@ -278,7 +257,7 @@ export default function CartPage() {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => navigate('/checkout')}
+              onClick={() => navigate('/checkout', { state: { specialInstructions } })}
               icon={ArrowRight}
             >
               Proceed to Checkout

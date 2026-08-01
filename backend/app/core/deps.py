@@ -77,3 +77,23 @@ async def get_current_customer(
         )
     return current_user
 
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    if not credentials:
+        return None
+    try:
+        payload = decode_token(credentials.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        repo = UserRepository(db)
+        user = await repo.get_by_id(user_id)
+        if user and user.is_active:
+            return user
+    except Exception:
+        pass
+    return None
+
+

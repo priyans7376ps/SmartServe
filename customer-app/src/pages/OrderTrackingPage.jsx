@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { RefreshCw, Bell, Utensils, BellOff } from 'lucide-react';
+import { useOrderTracking } from '../hooks/useOrderTracking';
 import { useTableStore } from '../store/useTableStore';
 import OrderTimeline from '../components/ui/OrderTimeline';
 import Button from '../components/ui/Button';
@@ -9,24 +10,22 @@ import Toast from '../components/ui/Toast';
 import { cn } from '../lib/cn';
 import { pageVariants, staggerContainer, staggerItem } from '../lib/motion';
 
-const STATUS_LIST = ['pending', 'preparing', 'ready', 'completed'];
-
 const STATUS_META = {
   pending:   { label: 'Order Placed',  color: 'text-info-500',    bg: 'bg-info-bg border-info-border' },
+  confirmed: { label: 'Confirmed',     color: 'text-brand-500',   bg: 'bg-brand-50 dark:bg-brand-950/30 border-brand-200/60 dark:border-brand-800/40' },
   preparing: { label: 'Preparing',     color: 'text-brand-500',   bg: 'bg-brand-50 dark:bg-brand-950/30 border-brand-200/60 dark:border-brand-800/40' },
   ready:     { label: 'Ready!',        color: 'text-success-500', bg: 'bg-success-bg border-success-border' },
   completed: { label: 'Delivered',     color: 'text-success-500', bg: 'bg-success-bg border-success-border' },
+  delivered: { label: 'Delivered',     color: 'text-success-500', bg: 'bg-success-bg border-success-border' },
+  cancelled: { label: 'Cancelled',     color: 'text-error-500',   bg: 'bg-error-bg border-error-border' },
 };
 
 export default function OrderTrackingPage() {
+  const [searchParams] = useSearchParams();
   const { tableNumber, restaurantName } = useTableStore();
   const [activeOrder, setActiveOrder] = useState(null);
-  const [statusIndex, setStatusIndex] = useState(1);
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [showToast, setShowToast] = useState(false);
-
-  const currentStatus = STATUS_LIST[statusIndex];
-  const meta = STATUS_META[currentStatus];
 
   useEffect(() => {
     const saved = localStorage.getItem('active_order');
@@ -35,13 +34,11 @@ export default function OrderTrackingPage() {
     }
   }, []);
 
-  /* Auto-advance status for demo */
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStatusIndex((prev) => (prev < STATUS_LIST.length - 1 ? prev + 1 : prev));
-    }, 12000);
-    return () => clearInterval(interval);
-  }, []);
+  const orderId = searchParams.get('order_id') || activeOrder?.order_id;
+  const { tracking, orderDetails, isLoading, isError } = useOrderTracking(orderId, 4000);
+
+  const currentStatus = tracking?.status || activeOrder?.status || 'pending';
+  const meta = STATUS_META[currentStatus] || STATUS_META.pending;
 
   const handleCallWaiter = () => {
     if (waiterCalled) return;
@@ -68,7 +65,7 @@ export default function OrderTrackingPage() {
           </div>
           <h1 className="text-h2 font-display font-extrabold text-ink-primary">Order Status</h1>
           <p className="text-caption text-ink-muted mt-0.5">
-            Table {tableNumber} · Token #{activeOrder?.tokenNumber || '8492'}
+            Table #{tracking?.table_number || tableNumber} · Token #{tracking?.token_number || activeOrder?.tokenNumber || '8492'}
           </p>
         </div>
 
@@ -93,7 +90,7 @@ export default function OrderTrackingPage() {
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-1/70 rounded-xl border border-subtle">
             <RefreshCw className="w-3.5 h-3.5 text-brand-500 animate-spin" aria-hidden="true" />
-            <span className="text-label font-bold text-ink-muted">Polling</span>
+            <span className="text-label font-bold text-ink-muted">Polling API</span>
           </div>
         </div>
 
@@ -112,12 +109,14 @@ export default function OrderTrackingPage() {
       >
         {/* Table Info */}
         <motion.div variants={staggerItem} className="bg-surface-1 border border-subtle rounded-2xl shadow-card p-5 space-y-3">
-          <h3 className="text-subtitle font-bold text-ink-primary">Table Details</h3>
+          <h3 className="text-subtitle font-bold text-ink-primary">Table & Order Details</h3>
           <div className="space-y-2">
             {[
               { label: 'Restaurant',     value: restaurantName || 'SmartServe Restaurant', valueClass: '' },
-              { label: 'Assigned Table', value: `Table ${tableNumber}`, valueClass: 'text-brand-500' },
-              { label: 'Payment',        value: 'Pay at Table', valueClass: 'text-success-500' },
+              { label: 'Order Number',   value: tracking?.order_number || activeOrder?.order_number || 'N/A', valueClass: 'font-mono' },
+              { label: 'Assigned Table', value: `Table #${tracking?.table_number || tableNumber}`, valueClass: 'text-brand-500' },
+              { label: 'Estimated Prep', value: `${tracking?.estimated_time_mins || 20} mins`, valueClass: 'text-amber-500' },
+              { label: 'Payment Status', value: tracking?.payment_status || 'Pending Cash', valueClass: 'text-success-500 capitalize' },
             ].map(({ label, value, valueClass }) => (
               <div key={label} className="flex items-center justify-between text-caption">
                 <span className="font-semibold text-ink-muted">{label}</span>

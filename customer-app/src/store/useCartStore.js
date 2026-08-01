@@ -1,98 +1,133 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { cartApi } from '../api/cart.api';
+import { couponApi } from '../api/coupon.api';
 
-export const useCartStore = create(
-  persist(
-    (set, get) => ({
-      items: [],
-      coupon: null,
-      specialInstructions: '',
+export const useCartStore = create((set, get) => ({
+  cartId: null,
+  items: [],
+  subtotal: 0.0,
+  taxAmount: 0.0,
+  discountAmount: 0.0,
+  totalAmount: 0.0,
+  totalItems: 0,
+  couponCode: null,
+  notes: '',
+  isLoading: false,
+  error: null,
 
-      addItem: (menuItem, quantity = 1, notes = '') => {
-        const currentItems = get().items;
-        const existingIndex = currentItems.findIndex((i) => i.item.id === menuItem.id);
-
-        if (existingIndex > -1) {
-          const updated = [...currentItems];
-          updated[existingIndex].quantity += quantity;
-          if (notes) updated[existingIndex].notes = notes;
-          set({ items: updated });
-        } else {
-          set({
-            items: [...currentItems, { item: menuItem, quantity, notes }],
-          });
-        }
-      },
-
-      removeItem: (itemId) => {
-        set({ items: get().items.filter((i) => i.item.id !== itemId) });
-      },
-
-      updateQuantity: (itemId, delta) => {
-        const currentItems = get().items;
-        const updated = currentItems
-          .map((i) => {
-            if (i.item.id === itemId) {
-              const newQty = i.quantity + delta;
-              return newQty > 0 ? { ...i, quantity: newQty } : null;
-            }
-            return i;
-          })
-          .filter(Boolean);
-
-        set({ items: updated });
-      },
-
-      setNotes: (itemId, notes) => {
-        set({
-          items: get().items.map((i) => (i.item.id === itemId ? { ...i, notes } : i)),
-        });
-      },
-
-      setSpecialInstructions: (text) => set({ specialInstructions: text }),
-
-      applyCoupon: (couponObj) => set({ coupon: couponObj }),
-      removeCoupon: () => set({ coupon: null }),
-
-      clearCart: () => set({ items: [], coupon: null, specialInstructions: '' }),
-
-      // Financial Calculations
-      getSubtotal: () => {
-        return get().items.reduce((sum, i) => sum + i.item.price * i.quantity, 0);
-      },
-
-      getTax: () => {
-        return get().getSubtotal() * 0.08; // 8% Tax
-      },
-
-      getServiceCharge: () => {
-        return get().getSubtotal() * 0.05; // 5% Service Charge
-      },
-
-      getDiscount: () => {
-        const subtotal = get().getSubtotal();
-        const coupon = get().coupon;
-        if (!coupon) return 0;
-        if (coupon.discount_type === 'percentage') {
-          return (subtotal * coupon.discount_value) / 100;
-        }
-        return Math.min(coupon.discount_value || 0, subtotal);
-      },
-
-      getGrandTotal: () => {
-        const subtotal = get().getSubtotal();
-        const tax = get().getTax();
-        const service = get().getServiceCharge();
-        const discount = get().getDiscount();
-        return Math.max(0, subtotal + tax + service - discount);
-      },
-
-      getItemCount: () => {
-        return get().items.reduce((sum, i) => sum + i.quantity, 0);
-      },
-    }),
-    {
-      name: 'smartserve_cart',
+  fetchCart: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await cartApi.getCart();
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      set({ isLoading: false, error: err.response?.data?.detail || 'Failed to fetch cart' });
     }
-  )
-);
+  },
+
+  syncBackendCart: (data) => {
+    if (!data) return;
+    set({
+      cartId: data.id,
+      items: data.items || [],
+      subtotal: data.subtotal || 0.0,
+      taxAmount: data.tax_amount || 0.0,
+      discountAmount: data.discount_amount || 0.0,
+      totalAmount: data.total || 0.0,
+      totalItems: data.total_items || 0,
+      couponCode: data.coupon_code || null,
+      notes: data.notes || '',
+    });
+  },
+
+  addItem: async (menuItemId, quantity = 1, notes = '', variantSelected = null, addOnsSelected = null) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await cartApi.addItem(menuItemId, quantity, notes, variantSelected, addOnsSelected);
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to add item to cart';
+      set({ isLoading: false, error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  updateQuantity: async (cartItemId, quantity) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await cartApi.updateItemQuantity(cartItemId, quantity);
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to update quantity';
+      set({ isLoading: false, error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  removeItem: async (cartItemId) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await cartApi.removeItem(cartItemId);
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to remove item';
+      set({ isLoading: false, error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  clearCart: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await cartApi.clearCart();
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      set({ isLoading: false, error: err.response?.data?.detail || 'Failed to clear cart' });
+    }
+  },
+
+  applyCoupon: async (code) => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await couponApi.applyCoupon(code);
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to apply coupon';
+      set({ isLoading: false, error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  removeCoupon: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const data = await couponApi.removeCoupon();
+      get().syncBackendCart(data);
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to remove coupon';
+      set({ isLoading: false, error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  // Helpers matching UI props
+  getSubtotal: () => get().subtotal,
+  getTax: () => get().taxAmount,
+  getDiscount: () => get().discountAmount,
+  getGrandTotal: () => get().totalAmount,
+  getItemCount: () => get().totalItems,
+}));

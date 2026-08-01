@@ -1,3 +1,44 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --surface-0: #f8f9fb;
+  --surface-1: #ffffff;
+  --surface-2: #f1f3f7;
+  --surface-3: rgba(255, 255, 255, 0.75);
+
+  --ink-primary:   #0d0f14;
+  --ink-secondary: #4b5563;
+  --ink-muted:     #9ca3af;
+  --ink-inverse:   #ffffff;
+
+  --border-subtle:  rgba(0, 0, 0, 0.05);
+  --border-default: rgba(0, 0, 0, 0.09);
+  --border-strong:  rgba(0, 0, 0, 0.18);
+}
+
+.dark {
+  --surface-0: #080b12;
+  --surface-1: #0f1420;
+  --surface-2: #161d2e;
+  --surface-3: rgba(15, 20, 32, 0.80);
+
+  --ink-primary:   #f0f4ff;
+  --ink-secondary: #a0aec0;
+  --ink-muted:     #4a5568;
+  --ink-inverse:   #080b12;
+
+  --border-subtle:  rgba(255, 255, 255, 0.04);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong:  rgba(255, 255, 255, 0.16);
+}
+
+body {
+  background-color: var(--surface-0);
+  color: var(--ink-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}

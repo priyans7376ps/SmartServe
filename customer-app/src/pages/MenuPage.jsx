@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ArrowUpDown, Frown, X } from 'lucide-react';
-import api from '../api/axios';
+import { useCategories } from '../hooks/useCategories';
+import { useMenu } from '../hooks/useMenu';
 import FoodCard from '../components/ui/FoodCard';
 import CategoryCard from '../components/ui/CategoryCard';
 import FilterDrawer from '../components/ui/FilterDrawer';
@@ -37,58 +38,56 @@ export default function MenuPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const catQuery = searchParams.get('category');
 
-  const [items, setItems]             = useState([]);
-  const [categories, setCategories]   = useState([]);
-  const [isLoading, setIsLoading]     = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(catQuery || null);
   const [isVegOnly, setIsVegOnly]     = useState(false);
   const [isNonVegOnly, setIsNonVegOnly] = useState(false);
-  const [maxPrice, setMaxPrice]       = useState(100);
-  const [availableOnly, setAvailableOnly] = useState(false);
+  const [maxPrice, setMaxPrice]       = useState(1000);
+  const [availableOnly, setAvailableOnly] = useState(true);
   const [sortOption, setSortOption]   = useState('name');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  const hasActiveFilters = isVegOnly || isNonVegOnly || selectedCategory || searchQuery || availableOnly;
+  const { categories, isLoading: isLoadingCats } = useCategories();
 
-  useEffect(() => {
-    api.get('/categories/')
-      .then((res) => setCategories(res.data || []))
-      .catch(console.error);
-  }, []);
+  const menuQueryParams = useMemo(() => {
+    const params = { page: 1, page_size: 100 };
+    if (selectedCategory) params.category_id = selectedCategory;
+    if (searchQuery.trim()) params.search = searchQuery.trim();
+    if (isVegOnly) params.is_veg = true;
+    if (availableOnly) params.is_available = true;
+    if (maxPrice < 1000) params.max_price = maxPrice;
+    return params;
+  }, [selectedCategory, searchQuery, isVegOnly, availableOnly, maxPrice]);
 
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(async () => {
-      try {
-        const params = { limit: 100, sort_by: sortOption };
-        if (searchQuery.trim()) params.q = searchQuery;
-        if (selectedCategory) params.category_id = selectedCategory;
-        if (isVegOnly) params.is_veg = true;
-        if (availableOnly) params.is_available = true;
-        if (maxPrice < 100) params.max_price = maxPrice;
+  const { items: rawItems, isLoading: isLoadingMenu, isError, error } = useMenu(menuQueryParams);
 
-        const endpoint = searchQuery.trim() ? '/menu/search' : '/menu/';
-        const res = await api.get(endpoint, { params });
-        let result = res.data?.items || res.data || [];
-        if (isNonVegOnly) result = result.filter((i) => !i.is_vegetarian);
-        setItems(result);
-      } catch (err) {
-        console.error('Failed to fetch menu items:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 280);
-    return () => clearTimeout(timer);
-  }, [searchQuery, selectedCategory, isVegOnly, isNonVegOnly, maxPrice, availableOnly, sortOption]);
+  const items = useMemo(() => {
+    let list = [...rawItems];
+    if (isNonVegOnly) {
+      list = list.filter((i) => !i.is_veg && !i.is_vegetarian);
+    }
+    if (sortOption === 'price_asc') {
+      list.sort((a, b) => (a.price || a.base_price) - (b.price || b.base_price));
+    } else if (sortOption === 'price_desc') {
+      list.sort((a, b) => (b.price || b.base_price) - (a.price || a.base_price));
+    } else if (sortOption === 'rating') {
+      list.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    } else {
+      list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }
+    return list;
+  }, [rawItems, isNonVegOnly, sortOption]);
+
+  const hasActiveFilters = isVegOnly || isNonVegOnly || selectedCategory || searchQuery || !availableOnly || maxPrice < 1000;
+  const isLoading = isLoadingCats || isLoadingMenu;
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setSelectedCategory(null);
     setIsVegOnly(false);
     setIsNonVegOnly(false);
-    setMaxPrice(100);
-    setAvailableOnly(false);
+    setMaxPrice(1000);
+    setAvailableOnly(true);
     setSortOption('name');
     setSearchParams({});
   };
@@ -107,7 +106,6 @@ export default function MenuPage() {
 
         {/* Sort + Filter */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* Sort select */}
           <div className="relative">
             <select
               value={sortOption}
@@ -178,7 +176,7 @@ export default function MenuPage() {
           isActive={!selectedCategory}
           onClick={() => { setSelectedCategory(null); setSearchParams({}); }}
         />
-        {categories.length === 0 && isLoading
+        {isLoadingCats
           ? Array.from({ length: 4 }).map((_, i) => <CategorySkeleton key={i} />)
           : categories.map((cat) => (
               <CategoryCard
@@ -234,8 +232,12 @@ export default function MenuPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => <FoodCardSkeleton key={i} />)}
         </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center rounded-3xl bg-surface-1 border border-subtle">
+          <p className="text-error-500 font-bold mb-2">Error loading menu</p>
+          <p className="text-caption text-ink-muted max-w-xs">{error?.message || 'Please check backend connection.'}</p>
+        </div>
       ) : items.length === 0 ? (
-        /* Empty state */
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}

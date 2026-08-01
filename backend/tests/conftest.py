@@ -27,6 +27,14 @@ class FakeSession:
             FakeSession._storage[tbl] = {}
         if hasattr(obj, 'id') and obj.id:
             FakeSession._storage[tbl][str(obj.id)] = obj
+        if hasattr(obj, 'user_id') and obj.user_id:
+            FakeSession._storage[tbl][str(obj.user_id)] = obj
+        if hasattr(obj, 'session_id') and obj.session_id:
+            FakeSession._storage[tbl][str(obj.session_id)] = obj
+        if hasattr(obj, 'code') and obj.code:
+            FakeSession._storage[tbl][str(obj.code)] = obj
+        if hasattr(obj, 'order_number') and obj.order_number:
+            FakeSession._storage[tbl][str(obj.order_number)] = obj
         if hasattr(obj, 'email') and obj.email:
             FakeSession._storage[tbl][str(obj.email)] = obj
         if hasattr(obj, 'slug') and obj.slug:
@@ -41,7 +49,12 @@ class FakeSession:
         
         # Determine target table
         tbl = "users"
-        for t in ["restaurants", "tables", "categories", "menu_items", "users", "roles"]:
+        all_tables = [
+            "restaurants", "tables", "categories", "menu_items", "users", "roles",
+            "carts", "cart_items", "orders", "order_items", "coupons", "coupon_usages",
+            "loyalty_points", "points_transactions", "notifications", "order_status_logs"
+        ]
+        for t in all_tables:
             if f"from {t}" in str_stmt or f"join {t}" in str_stmt or f"into {t}" in str_stmt:
                 tbl = t
                 break
