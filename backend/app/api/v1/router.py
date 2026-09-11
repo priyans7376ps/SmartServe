@@ -8,6 +8,7 @@ from app.api.tables.router import router as tables_router
 from app.api.category.router import router as category_router
 from app.api.menu.router import router as menu_router
 from app.api.media.router import router as media_router
+from app.api.payments.router import router as payments_router
 
 api_v1_router = APIRouter()
 api_v1_router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
@@ -21,3 +22,4 @@ api_v1_router.include_router(tables_router, prefix="/tables", tags=["Table Manag
 api_v1_router.include_router(category_router, prefix="/categories", tags=["Categories"])
 api_v1_router.include_router(menu_router, prefix="/menu", tags=["Menu Management"])
 api_v1_router.include_router(media_router, prefix="/media", tags=["Media Uploads"])
+api_v1_router.include_router(payments_router, prefix="/payments", tags=["Payments & Razorpay"])

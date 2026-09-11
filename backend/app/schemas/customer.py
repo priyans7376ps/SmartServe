@@ -56,6 +56,7 @@ class CartItemResponse(BaseModel):
     menu_item_image: Optional[str] = None
     quantity: int
     unit_price: float
+    compare_price: Optional[float] = None
     subtotal: float
     notes: Optional[str] = None
     variant_selected: Optional[Dict[str, Any]] = None

@@ -4,6 +4,7 @@ import Card from '../components/common/StatCard';
 import ExportDialog from '../components/common/ExportDialog';
 import DatePicker from '../components/common/DatePicker';
 import { useUIStore } from '../store/useUIStore';
+import adminApi from '../api/adminApi';
 
 export const ReportsPage = () => {
   const [selectedReport, setSelectedReport] = useState(null);
@@ -18,8 +19,21 @@ export const ReportsPage = () => {
     { id: 'customers', title: 'Customer Acquisition & Loyalty Report', desc: 'Guest vs registered customer ratio, coupon usage, and repeat diner rates.', icon: FileBarChart, color: 'text-cyan-500 bg-cyan-500/10' },
   ];
 
-  const handleExportCSV = (reportTitle) => {
-    addToast(`${reportTitle} exported to CSV successfully!`, 'success');
+  const handleExportCSV = async (rep) => {
+    try {
+      const data = await adminApi.getReport(rep.id, dateRange.startDate, dateRange.endDate);
+      const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${rep.id}_report_${dateRange.startDate}_${dateRange.endDate}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      addToast(`${rep.title} exported successfully!`, 'success');
+    } catch (err) {
+      addToast(`Failed to export report: ${err.message}`, 'error');
+    }
   };
 
   return (
@@ -56,7 +70,7 @@ export const ReportsPage = () => {
 
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
-                  onClick={() => handleExportCSV(rep.title)}
+                  onClick={() => handleExportCSV(rep)}
                   className="flex-1 py-2 px-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
                 >
                   <TableIcon className="w-3.5 h-3.5" />

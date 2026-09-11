@@ -16,12 +16,11 @@ from sqlalchemy import (
     ForeignKey,
     Text,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped
 import enum
 import uuid
 
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel, JSONB
 
 
 class UserRole(str, enum.Enum):

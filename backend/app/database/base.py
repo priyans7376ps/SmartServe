@@ -8,10 +8,59 @@ Provides timestamp columns, UUID primary keys, and other shared utilities.
 from datetime import datetime, timezone
 import uuid
 from typing import Any
+import sqlite3
+sqlite3.register_adapter(uuid.UUID, lambda u: str(u))
 
-from sqlalchemy import Column, DateTime, String, Boolean, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, String, Boolean, func, JSON
+from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB as PG_JSONB
 from sqlalchemy.orm import DeclarativeBase, declared_attr
+
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(36), storing as stringified hex values.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def __init__(self, as_uuid=True, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.as_uuid = as_uuid
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_UUID(as_uuid=self.as_uuid))
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == 'postgresql':
+            return str(value)
+        else:
+            if isinstance(value, uuid.UUID):
+                return str(value)
+            else:
+                try:
+                    return str(uuid.UUID(value))
+                except Exception:
+                    return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            if not isinstance(value, uuid.UUID):
+                try:
+                    value = uuid.UUID(value)
+                except Exception:
+                    pass
+            return value
+
+# Cross-dialect JSONB and UUID types (works on both PostgreSQL and SQLite)
+JSONB = PG_JSONB().with_variant(JSON(), "sqlite")
+UUID = GUID
 
 
 class Base(DeclarativeBase):

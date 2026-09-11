@@ -9,10 +9,9 @@ import enum
 from sqlalchemy import (
     Column, String, Boolean, Integer, Float, Text, ForeignKey, DateTime, Enum as SQLEnum, JSON
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, Mapped
 import uuid
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel, JSONB
 
 
 class OrderStatus(str, enum.Enum):

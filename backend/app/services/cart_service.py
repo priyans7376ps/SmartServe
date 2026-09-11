@@ -44,33 +44,33 @@ class CartService:
             cart_id=cart.id,
             menu_item_id=menu_item_id,
             quantity=quantity,
-            unit_price=menu_item.base_price,
+            unit_price=menu_item.price,
+            compare_price=menu_item.compare_price,
             notes=notes,
             variant_selected=variant_selected,
             add_ons_selected=add_ons_selected,
             add_ons_total=add_ons_total
         )
 
-        # Refresh cart
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
     async def update_item_quantity(self, cart_item_id: uuid.UUID, quantity: int, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None) -> CartResponse:
         cart = await self.cart_repo.get_or_create_cart(user_id=user_id, session_id=session_id)
         await self.cart_repo.update_cart_item_quantity(cart_item_id, quantity)
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
     async def remove_item(self, cart_item_id: uuid.UUID, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None) -> CartResponse:
         cart = await self.cart_repo.get_or_create_cart(user_id=user_id, session_id=session_id)
         await self.cart_repo.remove_cart_item(cart_item_id)
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
     async def clear_cart(self, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None) -> CartResponse:
         cart = await self.cart_repo.get_or_create_cart(user_id=user_id, session_id=session_id)
         await self.cart_repo.clear_cart(cart.id)
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
     async def apply_coupon(self, code: str, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None) -> CartResponse:
@@ -103,7 +103,7 @@ class CartService:
         self.db.add(cart)
         await self.db.commit()
 
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
     async def remove_coupon(self, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None) -> CartResponse:
@@ -114,10 +114,12 @@ class CartService:
         self.db.add(cart)
         await self.db.commit()
 
-        updated_cart = await self.cart_repo.get_by_id(cart.id)
+        updated_cart = await self.cart_repo.get_by_id_with_items(cart.id)
         return self._format_cart_response(updated_cart)
 
-    def _format_cart_response(self, cart: Cart) -> CartResponse:
+    def _format_cart_response(self, cart: Optional[Cart]) -> CartResponse:
+        if not cart:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cart not found")
         items = []
         for it in cart.items:
             if it.is_active:
@@ -131,6 +133,7 @@ class CartService:
                         menu_item_image=item_img,
                         quantity=it.quantity,
                         unit_price=it.unit_price,
+                        compare_price=it.compare_price,
                         subtotal=it.subtotal,
                         notes=it.notes,
                         variant_selected=it.variant_selected,

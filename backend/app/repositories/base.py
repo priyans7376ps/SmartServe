@@ -11,8 +11,15 @@ class BaseRepository(Generic[ModelType]):
         self.db = db
 
     async def get_by_id(self, id: Any) -> Optional[ModelType]:
+        if isinstance(id, str):
+            try:
+                import uuid
+                id = uuid.UUID(id)
+            except ValueError:
+                pass
         result = await self.db.execute(select(self.model).filter(self.model.id == id))
         return result.scalars().first()
+
 
     async def get_all(self, skip: int = 0, limit: int = 100) -> List[ModelType]:
         result = await self.db.execute(select(self.model).offset(skip).limit(limit))

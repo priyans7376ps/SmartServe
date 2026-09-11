@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CreditCard, DollarSign, QrCode, CheckCircle2, ShieldCheck, ArrowRight, Utensils } from 'lucide-react';
+import { CreditCard, DollarSign, QrCode, CheckCircle2, ShieldCheck, ArrowRight, Utensils, Lock } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useCheckout } from '../hooks/useCheckout';
 import { useTableStore } from '../store/useTableStore';
 import { useAuthStore } from '../store/useAuthStore';
 import Button from '../components/ui/Button';
+import { paymentApi } from '../api/payment.api';
+import { loadRazorpayScript } from '../utils/loadRazorpay';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
@@ -16,10 +18,11 @@ export default function CheckoutPage() {
   const { items, subtotal, taxAmount, discountAmount, totalAmount } = useCart();
   const { placeOrder, isPlacingOrder } = useCheckout();
 
-  const [paymentMethod, setPaymentMethod] = useState('pay_at_table');
+  const [paymentMethod, setPaymentMethod] = useState('online');
   const [customerName, setCustomerName] = useState(user?.full_name || '');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [errorMessage, setErrorMessage] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   if (items.length === 0) {
     navigate('/cart');
@@ -42,9 +45,11 @@ export default function CheckoutPage() {
 
       const res = await placeOrder(orderPayload);
       const tokenNumber = res.order_number ? res.order_number.slice(-4) : Math.floor(1000 + Math.random() * 9000);
+      const orderId = res.order_id || res.id;
 
+      // Save order context locally
       localStorage.setItem('active_order', JSON.stringify({
-        order_id: res.order_id,
+        order_id: orderId,
         order_number: res.order_number,
         tokenNumber,
         tableNumber,
@@ -54,7 +59,75 @@ export default function CheckoutPage() {
         timestamp: new Date().toISOString(),
       }));
 
-      navigate(`/order-success?order_id=${res.order_id}&token=${tokenNumber}`);
+      // If Razorpay Online payment is selected
+      if (paymentMethod === 'online' || paymentMethod === 'razorpay' || paymentMethod === 'upi') {
+        setIsProcessingPayment(true);
+        try {
+          const loaded = await loadRazorpayScript();
+          if (!loaded) {
+            setErrorMessage('Razorpay SDK failed to load. Please check your internet connection.');
+            setIsProcessingPayment(false);
+            return;
+          }
+
+          // Create Razorpay order on backend
+          const rzpOrderData = await paymentApi.createRazorpayOrder(orderId);
+          const { razorpay_order_id, amount, currency, razorpay_key_id } = rzpOrderData;
+
+          const options = {
+            key: razorpay_key_id,
+            amount: amount,
+            currency: currency || 'INR',
+            name: restaurantName || 'SmartServe Bistro',
+            description: `Order #${res.order_number}`,
+            order_id: razorpay_order_id,
+            prefill: {
+              name: customerName || user?.full_name || '',
+              email: user?.email || '',
+              contact: customerPhone || user?.phone || '',
+            },
+            theme: {
+              color: '#f59e0b',
+            },
+            handler: async (response) => {
+              try {
+                // Backend signature verification
+                const verifyRes = await paymentApi.verifyPayment({
+                  order_id: orderId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                });
+
+                if (verifyRes.success) {
+                  navigate(`/order-success?order_id=${orderId}&token=${tokenNumber}`);
+                } else {
+                  setErrorMessage('Payment verification failed on server.');
+                }
+              } catch (verifyErr) {
+                setErrorMessage(verifyErr.response?.data?.detail || 'Server payment verification failed.');
+              } finally {
+                setIsProcessingPayment(false);
+              }
+            },
+            modal: {
+              ondismiss: () => {
+                setIsProcessingPayment(false);
+                setErrorMessage('Payment process dismissed. You can retry payment anytime.');
+              },
+            },
+          };
+
+          const rzp = new window.Razorpay(options);
+          rzp.open();
+        } catch (rzpErr) {
+          setIsProcessingPayment(false);
+          setErrorMessage(rzpErr.response?.data?.detail || rzpErr.message || 'Razorpay order creation failed.');
+        }
+      } else {
+        // Pay at table or Cash
+        navigate(`/order-success?order_id=${orderId}&token=${tokenNumber}`);
+      }
     } catch (err) {
       setErrorMessage(err.message || 'Failed to place order. Please try again.');
     }
@@ -122,6 +195,31 @@ export default function CheckoutPage() {
             <div className="space-y-3">
               <motion.label
                 whileTap={{ scale: 0.98 }}
+                onClick={() => setPaymentMethod('online')}
+                className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all touch-target ${
+                  paymentMethod === 'online' || paymentMethod === 'razorpay'
+                    ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
+                      Razorpay Instant Checkout (UPI / Cards / NetBanking)
+                    </span>
+                    <span className="text-xs text-slate-400 font-medium">
+                      Secure encrypted digital payment with instant verification
+                    </span>
+                  </div>
+                </div>
+                {(paymentMethod === 'online' || paymentMethod === 'razorpay') && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
+              </motion.label>
+
+              <motion.label
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setPaymentMethod('pay_at_table')}
                 className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all touch-target ${
                   paymentMethod === 'pay_at_table'
@@ -130,7 +228,7 @@ export default function CheckoutPage() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
                     <DollarSign className="w-5 h-5" />
                   </div>
                   <div>
@@ -143,56 +241,6 @@ export default function CheckoutPage() {
                   </div>
                 </div>
                 {paymentMethod === 'pay_at_table' && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
-              </motion.label>
-
-              <motion.label
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setPaymentMethod('upi')}
-                className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all touch-target ${
-                  paymentMethod === 'upi'
-                    ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                    <QrCode className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
-                      UPI / Digital QR Code
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">
-                      Scan QR code on table screen using any UPI app
-                    </span>
-                  </div>
-                </div>
-                {paymentMethod === 'upi' && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
-              </motion.label>
-
-              <motion.label
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setPaymentMethod('card')}
-                className={`p-4 rounded-2xl border flex items-center justify-between cursor-pointer transition-all touch-target ${
-                  paymentMethod === 'card'
-                    ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm'
-                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center">
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-sm text-slate-900 dark:text-white block">
-                      Card Swipe Terminal
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">
-                      Staff will bring terminal to Table #{tableNumber}
-                    </span>
-                  </div>
-                </div>
-                {paymentMethod === 'card' && <CheckCircle2 className="w-5 h-5 text-amber-500" />}
               </motion.label>
             </div>
           </div>
@@ -252,10 +300,10 @@ export default function CheckoutPage() {
               size="lg"
               className="w-full"
               onClick={handlePlaceOrder}
-              isLoading={isPlacingOrder}
+              isLoading={isPlacingOrder || isProcessingPayment}
               icon={ArrowRight}
             >
-              Place Order Now
+              {isProcessingPayment ? 'Opening Razorpay Payment...' : 'Proceed to Payment'}
             </Button>
 
             <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-slate-400 pt-2">

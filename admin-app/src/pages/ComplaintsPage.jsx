@@ -1,76 +1,64 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { MessageSquareWarning, CheckCircle2, XCircle, MessageCircle, RefreshCw } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { MessageCircle, RefreshCw } from 'lucide-react';
 import Table from '../components/common/Table';
 import StatusBadge from '../components/common/StatusBadge';
 import SearchBar from '../components/common/SearchBar';
 import Modal from '../components/common/Modal';
 import { useUIStore } from '../store/useUIStore';
-import api from '../api/axios';
+import adminApi from '../api/adminApi';
 
 export const ComplaintsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [replyText, setReplyText] = useState('');
   const { addToast } = useUIStore();
+  const queryClient = useQueryClient();
 
-  const { data: complaints = [], isLoading, refetch } = useQuery({
-    queryKey: ['admin-complaints'],
-    queryFn: async () => {
-      try {
-        const res = await api.get('/complaints/');
-        return res.data || [];
-      } catch (err) {
-        return [
-          { id: 'CMP-501', customer: 'John Doe', table: 'Table 04', orderId: 'ORD-9021', issue: 'Food served cold and garlic naan missing.', status: 'new', createdAt: '2026-08-01 20:20' },
-          { id: 'CMP-502', customer: 'Sarah Smith', table: 'Table 02', orderId: 'ORD-9020', issue: 'Delayed order delivery by over 35 mins.', status: 'in_progress', createdAt: '2026-08-01 19:40' },
-          { id: 'CMP-503', customer: 'Alex J.', table: 'Table 05', orderId: 'ORD-9017', issue: 'Incorrect bill item added.', status: 'resolved', createdAt: '2026-08-01 18:10' },
-        ];
-      }
-    },
+  const { data: resData, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['admin', 'complaints', searchTerm],
+    queryFn: () => adminApi.getComplaints({ query: searchTerm }),
   });
 
-  const handleUpdateStatus = (id, newStatus) => {
-    addToast(`Complaint ${id} marked as ${newStatus}.`, 'success');
-    setSelectedComplaint(null);
-  };
+  const complaints = resData?.items || [];
 
-  const handleSendReply = (e) => {
-    e.preventDefault();
-    addToast(`Customer reply placeholder sent: "${replyText}"`, 'info');
-    setReplyText('');
-  };
-
-  const filteredComplaints = (Array.isArray(complaints) ? complaints : []).filter((c) => {
-    if (!c) return false;
-    const idStr = (c.id || '').toLowerCase();
-    const customerStr = (c.customer || c.user?.full_name || '').toLowerCase();
-    const issueStr = (c.issue || c.description || '').toLowerCase();
-
-    return (
-      idStr.includes(searchTerm.toLowerCase()) ||
-      customerStr.includes(searchTerm.toLowerCase()) ||
-      issueStr.includes(searchTerm.toLowerCase())
-    );
+  const updateMutation = useMutation({
+    mutationFn: ({ complaintId, status, resolutionNotes }) => adminApi.updateComplaint(complaintId, {
+      status,
+      resolution_notes: resolutionNotes
+    }),
+    onSuccess: () => {
+      addToast('Complaint status updated successfully.', 'success');
+      setSelectedComplaint(null);
+      setReplyText('');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'complaints'] });
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.detail || 'Failed to update complaint.', 'error');
+    }
   });
 
   const columns = [
-    { key: 'id', header: 'Ticket ID', sortable: true, render: (val) => <span className="font-bold text-amber-500">{val}</span> },
-    { key: 'customer', header: 'Customer', sortable: true, render: (val, row) => (
+    { header: 'Subject / Category', accessor: (row) => (
         <div>
-          <p className="font-medium text-slate-800 dark:text-slate-100">{val}</p>
-          <span className="text-[10px] text-slate-400">{row.table}</span>
+          <span className="font-bold text-slate-800 dark:text-slate-100 block">{row.subject}</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-wider">{row.category}</span>
         </div>
       )
     },
-    { key: 'orderId', header: 'Order ID' },
-    { key: 'issue', header: 'Issue Description', render: (val) => <span className="truncate max-w-xs block">{val}</span> },
-    { key: 'status', header: 'Status', sortable: true, render: (val) => <StatusBadge status={val} /> },
-    { key: 'createdAt', header: 'Received Time', sortable: true },
+    { header: 'Customer', accessor: (row) => (
+        <div>
+          <p className="font-medium text-slate-800 dark:text-slate-100">{row.customer_name || 'Customer'}</p>
+          <span className="text-[10px] text-slate-400">{row.customer_email || 'N/A'}</span>
+        </div>
+      )
+    },
+    { header: 'Priority', accessor: (row) => <StatusBadge status={row.priority} /> },
+    { header: 'Status', accessor: (row) => <StatusBadge status={row.status} /> },
+    { header: 'Received', accessor: (row) => row.created_at ? new Date(row.created_at).toLocaleString() : 'N/A' },
     {
-      key: 'actions',
       header: 'Actions',
-      render: (_, row) => (
+      accessor: (row) => (
         <button
           onClick={() => setSelectedComplaint(row)}
           className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-white text-xs font-semibold transition-colors"
@@ -86,14 +74,15 @@ export const ComplaintsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Complaint Management</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Review, resolve, reject customer tickets, and send replies</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Review, resolve, reject customer tickets, and add admin responses</p>
         </div>
 
         <button
           onClick={() => refetch()}
+          disabled={isFetching}
           className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm self-start sm:self-auto"
         >
-          <RefreshCw className="w-4 h-4 text-amber-500" />
+          <RefreshCw className={`w-4 h-4 text-amber-500 ${isFetching ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
@@ -101,69 +90,74 @@ export const ComplaintsPage = () => {
         <SearchBar
           value={searchTerm}
           onChange={setSearchTerm}
-          placeholder="Search by ticket ID, customer, issue..."
+          placeholder="Search by ticket subject, customer, or category..."
           className="w-full md:w-80"
         />
       </div>
 
       <Table
         columns={columns}
-        data={filteredComplaints}
+        data={complaints}
         isLoading={isLoading}
         emptyMessage="No customer complaints logged."
       />
 
       {/* Inspect Complaint Modal */}
-      <Modal
-        isOpen={!!selectedComplaint}
-        onClose={() => setSelectedComplaint(null)}
-        title={`Ticket ${selectedComplaint?.id}`}
-        maxWidth="max-w-lg"
-      >
-        {selectedComplaint && (
+      {selectedComplaint && (
+        <Modal
+          isOpen={!!selectedComplaint}
+          onClose={() => setSelectedComplaint(null)}
+          title={`Ticket: ${selectedComplaint.subject}`}
+          maxWidth="max-w-lg"
+        >
           <div className="space-y-6 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <p className="font-bold text-slate-800 dark:text-white">{selectedComplaint.customer} ({selectedComplaint.table})</p>
-                <p className="text-[10px] text-slate-400">Order Ref: {selectedComplaint.orderId}</p>
+                <p className="font-bold text-slate-800 dark:text-white">{selectedComplaint.customer_name} ({selectedComplaint.customer_email || 'N/A'})</p>
+                <p className="text-[10px] text-slate-400">Category: {selectedComplaint.category}</p>
               </div>
               <StatusBadge status={selectedComplaint.status} />
             </div>
 
             <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-800">
-              <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Issue Reported:</p>
-              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{selectedComplaint.issue}</p>
+              <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">Issue Description:</p>
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{selectedComplaint.description}</p>
             </div>
 
-            {/* Status Assignment Buttons */}
+            {selectedComplaint.resolution_notes && (
+              <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                <p className="font-bold text-amber-800 dark:text-amber-300 mb-1">Previous Resolution Notes:</p>
+                <p className="text-slate-700 dark:text-slate-300">{selectedComplaint.resolution_notes}</p>
+              </div>
+            )}
+
             <div>
-              <p className="font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider text-[10px]">Assign Status</p>
+              <p className="font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase tracking-wider text-[10px]">Update Complaint Status</p>
               <div className="grid grid-cols-3 gap-2">
                 <button
-                  onClick={() => handleUpdateStatus(selectedComplaint.id, 'in_progress')}
+                  onClick={() => updateMutation.mutate({ complaintId: selectedComplaint.id, status: 'in_progress' })}
                   className="py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 font-bold hover:bg-amber-500 hover:text-white transition-all"
                 >
                   In Progress
                 </button>
                 <button
-                  onClick={() => handleUpdateStatus(selectedComplaint.id, 'resolved')}
+                  onClick={() => updateMutation.mutate({ complaintId: selectedComplaint.id, status: 'resolved', resolutionNotes: replyText || 'Resolved by Admin' })}
                   className="py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-bold hover:bg-emerald-500 hover:text-white transition-all"
                 >
                   Resolve Ticket
                 </button>
                 <button
-                  onClick={() => handleUpdateStatus(selectedComplaint.id, 'rejected')}
+                  onClick={() => updateMutation.mutate({ complaintId: selectedComplaint.id, status: 'closed', resolutionNotes: replyText || 'Closed by Admin' })}
                   className="py-2 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-600 font-bold hover:bg-rose-500 hover:text-white transition-all"
                 >
-                  Reject Ticket
+                  Close Ticket
                 </button>
               </div>
             </div>
 
-            {/* Customer Reply Placeholder */}
-            <form onSubmit={handleSendReply} className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate({ complaintId: selectedComplaint.id, status: selectedComplaint.status, resolutionNotes: replyText }); }} className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
-                Send Reply to Customer (Placeholder)
+                Add Admin Response & Resolution Notes
               </label>
               <textarea
                 rows={3}
@@ -175,15 +169,16 @@ export const ComplaintsPage = () => {
               />
               <button
                 type="submit"
+                disabled={updateMutation.isPending}
                 className="w-full py-2.5 rounded-xl bg-amber-500 text-white font-bold shadow-md hover:bg-amber-600 flex items-center justify-center gap-2"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>Send Customer Reply</span>
+                <span>Save Response Notes</span>
               </button>
             </form>
           </div>
-        )}
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 };

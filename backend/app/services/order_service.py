@@ -64,8 +64,26 @@ class OrderService:
         session_id: Optional[str] = None
     ) -> Order:
         cart = await self.cart_repo.get_or_create_cart(user_id=user_id, session_id=session_id)
-        if not cart.items or cart.subtotal == 0:
+        if not cart:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cart not found")
+
+        active_items = [it for it in cart.items if it.is_active]
+        if not active_items or cart.subtotal == 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cart is empty")
+
+        # Validate menu items still exist, are active, and available
+        for it in active_items:
+            if not it.menu_item or not it.menu_item.is_active:
+                name = it.menu_item.name if it.menu_item else "Selected item"
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Menu item '{name}' is no longer available"
+                )
+            if not it.menu_item.is_available:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Menu item '{it.menu_item.name}' is currently sold out"
+                )
 
         # Get default active restaurant
         restaurants = await self.rest_repo.get_all(limit=1)
@@ -102,28 +120,37 @@ class OrderService:
         }
 
         items_data = []
-        for it in cart.items:
-            if it.is_active and it.menu_item:
-                items_data.append({
-                    "menu_item_id": it.menu_item_id,
-                    "item_name": it.menu_item.name,
-                    "unit_price": it.unit_price,
-                    "quantity": it.quantity,
-                    "total_price": it.subtotal,
-                    "notes": it.notes,
-                    "variant_selected": it.variant_selected,
-                    "add_ons_selected": it.add_ons_selected,
-                    "status": "pending"
-                })
+        for it in active_items:
+            unit_p = float(it.unit_price)
+            addons_p = float(it.add_ons_total or 0.0)
+            qty = int(it.quantity)
+            item_subtotal = round((unit_p + addons_p) * qty, 2)
+
+            items_data.append({
+                "menu_item_id": it.menu_item_id,
+                "item_name": it.menu_item.name,
+                "item_description": it.menu_item.description,
+                "unit_price": unit_p,
+                "compare_price": float(it.compare_price) if it.compare_price is not None else None,
+                "quantity": qty,
+                "subtotal": item_subtotal,
+                "notes": it.notes,
+                "variant_selected": it.variant_selected,
+                "add_ons_selected": it.add_ons_selected,
+                "add_ons_total": addons_p,
+                "preparation_status": "pending"
+            })
 
         order = await self.order_repo.create_order_with_items(order_data, items_data)
 
         # Clear cart after conversion
         await self.cart_repo.clear_cart(cart.id)
-        cart.is_converted = True
-        cart.converted_at = datetime.now(timezone.utc)
-        self.db.add(cart)
-        await self.db.commit()
+        refreshed_cart = await self.cart_repo.get_by_id(cart.id)
+        if refreshed_cart:
+            refreshed_cart.is_converted = True
+            refreshed_cart.converted_at = datetime.now(timezone.utc)
+            self.db.add(refreshed_cart)
+            await self.db.commit()
 
         # If coupon used, record usage
         if cart.coupon_id and user_id:
@@ -135,7 +162,8 @@ class OrderService:
                 order_amount=subtotal
             )
 
-        return order
+        full_order = await self.order_repo.get_by_id(order.id)
+        return full_order or order
 
     async def get_order_tracking(self, order_id: uuid.UUID) -> OrderTrackingResponse:
         order = await self.order_repo.get_by_id(order_id)

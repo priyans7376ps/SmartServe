@@ -27,8 +27,10 @@ class FakeSession:
             FakeSession._storage[tbl] = {}
         if hasattr(obj, 'id') and obj.id:
             FakeSession._storage[tbl][str(obj.id)] = obj
-        if hasattr(obj, 'user_id') and obj.user_id:
-            FakeSession._storage[tbl][str(obj.user_id)] = obj
+        if hasattr(obj, 'order_id') and obj.order_id:
+            FakeSession._storage[tbl][str(obj.order_id)] = obj
+        if hasattr(obj, 'provider_order_id') and obj.provider_order_id:
+            FakeSession._storage[tbl][str(obj.provider_order_id)] = obj
         if hasattr(obj, 'session_id') and obj.session_id:
             FakeSession._storage[tbl][str(obj.session_id)] = obj
         if hasattr(obj, 'code') and obj.code:
@@ -39,6 +41,33 @@ class FakeSession:
             FakeSession._storage[tbl][str(obj.email)] = obj
         if hasattr(obj, 'slug') and obj.slug:
             FakeSession._storage[tbl][str(obj.slug)] = obj
+
+        if tbl == "cart_items":
+            cart_id = getattr(obj, "cart_id", None)
+            if cart_id:
+                cart_obj = FakeSession._storage.get("carts", {}).get(str(cart_id))
+                if cart_obj:
+                    if not hasattr(cart_obj, "items") or cart_obj.items is None:
+                        cart_obj.items = []
+                    if obj not in cart_obj.items:
+                        cart_obj.items.append(obj)
+            menu_item_id = getattr(obj, "menu_item_id", None)
+            if menu_item_id:
+                menu_obj = FakeSession._storage.get("menu_items", {}).get(str(menu_item_id))
+                if menu_obj:
+                    obj.menu_item = menu_obj
+
+    async def delete(self, obj):
+        tbl = getattr(obj, "__tablename__", "users")
+        if tbl == "cart_items":
+            cart_id = getattr(obj, "cart_id", None)
+            if cart_id:
+                cart_obj = FakeSession._storage.get("carts", {}).get(str(cart_id))
+                if cart_obj and hasattr(cart_obj, "items") and cart_obj.items:
+                    if obj in cart_obj.items:
+                        cart_obj.items.remove(obj)
+        if tbl in FakeSession._storage and hasattr(obj, 'id') and obj.id:
+            FakeSession._storage[tbl].pop(str(obj.id), None)
 
     async def refresh(self, obj):
         pass
@@ -51,8 +80,8 @@ class FakeSession:
         tbl = "users"
         all_tables = [
             "restaurants", "tables", "categories", "menu_items", "users", "roles",
-            "carts", "cart_items", "orders", "order_items", "coupons", "coupon_usages",
-            "loyalty_points", "points_transactions", "notifications", "order_status_logs"
+            "carts", "cart_items", "orders", "order_items", "payments", "coupons", "coupon_usages",
+            "complaints", "audit_logs", "loyalty_points", "points_transactions", "notifications", "order_status_logs"
         ]
         for t in all_tables:
             if f"from {t}" in str_stmt or f"join {t}" in str_stmt or f"into {t}" in str_stmt:
@@ -65,7 +94,14 @@ class FakeSession:
         has_where = hasattr(statement, "_where_criteria") and len(statement._where_criteria) > 0
 
         if has_where:
+            clauses = []
             for clause in statement._where_criteria:
+                if hasattr(clause, "clauses"):
+                    clauses.extend(clause.clauses)
+                else:
+                    clauses.append(clause)
+
+            for clause in clauses:
                 val = None
                 try:
                     if hasattr(clause, "right"):
@@ -82,8 +118,14 @@ class FakeSession:
                             break
                         for cand in candidates:
                             if (hasattr(cand, "id") and str(cand.id) == sval) or \
+                               (hasattr(cand, "user_id") and str(cand.user_id) == sval) or \
+                               (hasattr(cand, "session_id") and str(cand.session_id) == sval) or \
                                (hasattr(cand, "email") and cand.email == sval) or \
-                               (hasattr(cand, "slug") and cand.slug == sval):
+                               (hasattr(cand, "slug") and cand.slug == sval) or \
+                               (hasattr(cand, "order_id") and str(cand.order_id) == sval) or \
+                               (hasattr(cand, "provider_order_id") and str(cand.provider_order_id) == sval) or \
+                               (hasattr(cand, "order_number") and str(cand.order_number) == sval) or \
+                               (hasattr(cand, "code") and str(cand.code) == sval):
                                 matched = cand
                                 break
                         if matched:
@@ -97,6 +139,10 @@ class FakeSession:
         mock_result.scalars().all.return_value = [matched] if (matched and has_where) else candidates
         mock_result.scalar.return_value = len(candidates)
         return mock_result
+
+@pytest.fixture(autouse=True)
+def reset_fake_storage():
+    FakeSession.clear()
 
 async def override_get_db() -> AsyncGenerator[FakeSession, None]:
     yield FakeSession()

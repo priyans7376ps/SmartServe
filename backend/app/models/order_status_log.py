@@ -5,11 +5,10 @@ Tracks every order status transition for auditing and analytics.
 
 from typing import Optional
 from sqlalchemy import Column, String, Text, ForeignKey, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 import uuid
 
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel
 from app.models.order import OrderStatus
 
 

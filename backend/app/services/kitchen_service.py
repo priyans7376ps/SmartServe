@@ -14,12 +14,12 @@ from app.repositories.category_repository import CategoryRepository
 
 # Allowed status transitions matrix
 VALID_TRANSITIONS = {
-    OrderStatus.PENDING: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+    OrderStatus.PENDING: [OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.CANCELLED],
     OrderStatus.CONFIRMED: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
     OrderStatus.PREPARING: [OrderStatus.READY, OrderStatus.CANCELLED],
     OrderStatus.READY: [OrderStatus.COMPLETED, OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+    OrderStatus.DELIVERED: [OrderStatus.COMPLETED],
     OrderStatus.COMPLETED: [],
-    OrderStatus.DELIVERED: [],
     OrderStatus.CANCELLED: [],
 }
 
@@ -67,13 +67,24 @@ class KitchenService:
                     active_tables.add(str(o.table_id))
 
             # Calculate waiting time in minutes
-            wait_mins = (now - o.placed_at).total_seconds() / 60.0
+            placed = o.placed_at or now
+            if placed.tzinfo is None and now.tzinfo is not None:
+                placed = placed.replace(tzinfo=timezone.utc)
+            elif placed.tzinfo is not None and now.tzinfo is None:
+                placed = placed.replace(tzinfo=None)
+            wait_mins = (now - placed).total_seconds() / 60.0
             if o.status not in [OrderStatus.COMPLETED, OrderStatus.CANCELLED]:
                 waiting_times.append(wait_mins)
 
             # Calculate cooking time if completed
             if o.preparing_at and o.ready_at:
-                cook_mins = (o.ready_at - o.preparing_at).total_seconds() / 60.0
+                p_at = o.preparing_at
+                r_at = o.ready_at
+                if p_at.tzinfo is None and r_at.tzinfo is not None:
+                    p_at = p_at.replace(tzinfo=timezone.utc)
+                elif p_at.tzinfo is not None and r_at.tzinfo is None:
+                    r_at = r_at.replace(tzinfo=timezone.utc)
+                cook_mins = (r_at - p_at).total_seconds() / 60.0
                 cooking_times.append(cook_mins)
 
         avg_cooking = round(sum(cooking_times) / len(cooking_times), 1) if cooking_times else 15.0
@@ -109,6 +120,66 @@ class KitchenService:
             "average_preparation_time": stats["average_cooking_time"],
             "performance_rating": "Optimal" if completion_rate >= 90 else "Standard",
         }
+
+    def format_single_order(self, o: Order, now: Optional[datetime] = None) -> Dict[str, Any]:
+        if now is None:
+            now = datetime.now(timezone.utc)
+        placed = o.placed_at
+        if placed and placed.tzinfo is None and now.tzinfo is not None:
+            placed = placed.replace(tzinfo=timezone.utc)
+        elif placed and placed.tzinfo is not None and now.tzinfo is None:
+            placed = placed.replace(tzinfo=None)
+        wait_mins = int((now - placed).total_seconds() // 60) if placed else 0
+        if wait_mins >= 20:
+            priority = "high"
+        elif wait_mins >= 10:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        table_num = str(o.table.table_number) if o.table else "N/A"
+        token_num = f"TKN-{o.order_number[-4:]}"
+
+        items_list = []
+        for item in (o.items or []):
+            items_list.append({
+                "id": str(item.id),
+                "name": item.item_name,
+                "quantity": item.quantity,
+                "notes": item.notes,
+                "variant": item.variant_selected,
+                "add_ons": item.add_ons_selected,
+                "status": getattr(item, "status", "pending")
+            })
+
+        return {
+            "id": str(o.id),
+            "order_number": o.order_number,
+            "token_number": token_num,
+            "table_number": table_num,
+            "customer_name": o.customer_name or "Guest Diner",
+            "customer_type": "registered" if o.user_id else "guest",
+            "status": o.status.value,
+            "payment_status": o.payment_status,
+            "payment_method": o.payment_method,
+            "placed_at": o.placed_at,
+            "estimated_time_mins": o.estimated_preparation_time or 20,
+            "waiting_time_mins": wait_mins,
+            "priority": priority,
+            "notes": o.notes,
+            "special_instructions": o.special_instructions,
+            "items": items_list,
+            "subtotal": o.subtotal,
+            "tax_amount": o.tax_amount,
+            "discount_amount": o.discount_amount,
+            "total_amount": o.total_amount,
+        }
+
+    async def get_order_details(self, order_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            return None
+        return self.format_single_order(order)
 
     async def get_active_queue(
         self,
@@ -158,54 +229,10 @@ class KitchenService:
 
         formatted_orders = []
         for o in all_orders:
-            wait_mins = int((now - o.placed_at).total_seconds() // 60)
-            if wait_mins >= 20:
-                priority = "high"
-            elif wait_mins >= 10:
-                priority = "medium"
-            else:
-                priority = "low"
-
-            if priority_filter and priority != priority_filter.lower():
+            formatted = self.format_single_order(o, now)
+            if priority_filter and formatted["priority"] != priority_filter.lower():
                 continue
-
-            table_num = str(o.table.table_number) if o.table else "N/A"
-            token_num = f"TKN-{o.order_number[-4:]}"
-
-            items_list = []
-            for item in o.items:
-                items_list.append({
-                    "id": str(item.id),
-                    "name": item.item_name,
-                    "quantity": item.quantity,
-                    "notes": item.notes,
-                    "variant": item.variant_selected,
-                    "add_ons": item.add_ons_selected,
-                    "status": getattr(item, "status", "pending")
-                })
-
-            formatted_orders.append({
-                "id": str(o.id),
-                "order_number": o.order_number,
-                "token_number": token_num,
-                "table_number": table_num,
-                "customer_name": o.customer_name or "Guest Diner",
-                "customer_type": "registered" if o.user_id else "guest",
-                "status": o.status.value,
-                "payment_status": o.payment_status,
-                "payment_method": o.payment_method,
-                "placed_at": o.placed_at,
-                "estimated_time_mins": o.estimated_preparation_time or 20,
-                "waiting_time_mins": wait_mins,
-                "priority": priority,
-                "notes": o.notes,
-                "special_instructions": o.special_instructions,
-                "items": items_list,
-                "subtotal": o.subtotal,
-                "tax_amount": o.tax_amount,
-                "discount_amount": o.discount_amount,
-                "total_amount": o.total_amount,
-            })
+            formatted_orders.append(formatted)
 
         total_count = len(formatted_orders)
         start = (page - 1) * page_size

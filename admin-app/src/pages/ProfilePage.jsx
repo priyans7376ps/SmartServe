@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { User, Lock, Shield, LogOut, Save } from 'lucide-react';
+import { Lock, LogOut, Save } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useUIStore } from '../store/useUIStore';
+import adminApi from '../api/adminApi';
 
 export const ProfilePage = () => {
   const { user, logout } = useAuthStore();
@@ -12,15 +13,28 @@ export const ProfilePage = () => {
     newPassword: '',
     confirmPassword: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleChangePassword = (e) => {
+  const handleChangePassword = async (e) => {
     e.preventDefault();
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       addToast('New passwords do not match.', 'error');
       return;
     }
-    addToast('Password changed successfully.', 'success');
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+    setIsSubmitting(true);
+    try {
+      await adminApi.changePassword({
+        current_password: passwordData.currentPassword,
+        new_password: passwordData.newPassword,
+      });
+      addToast('Password changed successfully.', 'success');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      addToast(err.response?.data?.detail || 'Failed to change password.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -34,13 +48,13 @@ export const ProfilePage = () => {
       <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-full bg-amber-500 text-white font-extrabold text-xl flex items-center justify-center shadow-lg shadow-amber-500/30">
-            {user?.name ? user.name.charAt(0).toUpperCase() : 'A'}
+            {(user?.full_name || user?.name || 'A').charAt(0).toUpperCase()}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{user?.name || 'Administrator'}</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">{user?.full_name || user?.name || 'Administrator'}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">{user?.email || 'admin@smartserve.com'}</p>
             <span className="inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 uppercase tracking-wider">
-              Role: {user?.role || 'Super Admin'}
+              Role: {user?.role || 'Admin'}
             </span>
           </div>
         </div>
@@ -69,7 +83,7 @@ export const ProfilePage = () => {
               required
               value={passwordData.currentPassword}
               onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
             />
           </div>
 
@@ -80,7 +94,7 @@ export const ProfilePage = () => {
               required
               value={passwordData.newPassword}
               onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
             />
           </div>
 
@@ -91,17 +105,18 @@ export const ProfilePage = () => {
               required
               value={passwordData.confirmPassword}
               onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
             />
           </div>
 
           <div className="flex justify-end pt-2">
             <button
               type="submit"
+              disabled={isSubmitting}
               className="px-5 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-500/20 hover:bg-amber-600 flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
-              <span>Update Password</span>
+              <span>{isSubmitting ? 'Updating...' : 'Update Password'}</span>
             </button>
           </div>
         </form>

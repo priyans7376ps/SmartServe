@@ -20,11 +20,10 @@ from sqlalchemy import (
     JSON,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 import uuid
 
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel, JSONB
 
 
 class Restaurant(BaseModel):

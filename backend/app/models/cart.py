@@ -19,11 +19,10 @@ from sqlalchemy import (
     Text,
     DateTime,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 import uuid
 
-from app.database.base import BaseModel, TimestampMixin
+from app.database.base import UUID,  BaseModel, JSONB, TimestampMixin
 
 
 class Cart(BaseModel):

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { UserCheck, Plus, Edit, UserX, Shield, ChefHat, RefreshCw } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Edit, UserX, RefreshCw } from 'lucide-react';
 import Table from '../components/common/Table';
 import StatusBadge from '../components/common/StatusBadge';
 import SearchBar from '../components/common/SearchBar';
 import Modal from '../components/common/Modal';
 import ConfirmationDialog from '../components/common/ConfirmationDialog';
 import { useUIStore } from '../store/useUIStore';
-import api from '../api/axios';
+import adminApi from '../api/adminApi';
 
 export const StaffPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -16,111 +16,113 @@ export const StaffPage = () => {
   const [editingStaff, setEditingStaff] = useState(null);
   const [deactivatingStaff, setDeactivatingStaff] = useState(null);
   const { addToast } = useUIStore();
+  const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
-    name: '',
+    full_name: '',
     email: '',
     phone: '',
+    password: '',
     role: 'kitchen',
-    active: true,
+    is_active: true,
   });
 
-  const { data: staffList = [], isLoading, refetch } = useQuery({
-    queryKey: ['admin-staff'],
-    queryFn: async () => {
-      try {
-        const res = await api.get('/auth/me');
-        const items = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
-        return items.map((item, idx) => ({
-          id: item.id || `STF-0${idx + 1}`,
-          name: item.full_name || item.name || 'Staff Member',
-          email: item.email || 'N/A',
-          phone: item.phone || 'N/A',
-          role: item.role || 'kitchen',
-          active: item.is_active ?? item.active ?? true,
-          joinedDate: item.created_at ? item.created_at.split('T')[0] : '2025-01-15',
-        }));
-      } catch (err) {
-        return [
-          { id: 'STF-01', name: 'Alexander Wright', email: 'alex.w@smartserve.com', phone: '+91 98765 11111', role: 'admin', active: true, joinedDate: '2025-01-15' },
-          { id: 'STF-02', name: 'Chef Marco Rossi', email: 'marco@smartserve.com', phone: '+91 98765 22222', role: 'kitchen', active: true, joinedDate: '2025-03-10' },
-          { id: 'STF-03', name: 'Priya Sharma', email: 'priya@smartserve.com', phone: '+91 98765 33333', role: 'manager', active: true, joinedDate: '2025-06-01' },
-          { id: 'STF-04', name: 'David Miller', email: 'david@smartserve.com', phone: '+91 98765 44444', role: 'kitchen', active: false, joinedDate: '2025-08-20' },
-        ];
+  const { data: staffList = [], isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['admin', 'staff', searchTerm, roleFilter],
+    queryFn: () => adminApi.getStaff({ query: searchTerm, role: roleFilter }),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (data) => {
+      if (editingStaff) {
+        return adminApi.updateStaff(editingStaff.id, {
+          full_name: data.full_name,
+          phone: data.phone,
+          role: data.role,
+          is_active: data.is_active,
+        });
+      } else {
+        return adminApi.createStaff(data);
       }
     },
+    onSuccess: () => {
+      addToast(editingStaff ? 'Staff member updated!' : 'New staff member onboarded!', 'success');
+      setIsModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'staff'] });
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.detail || 'Failed to save staff details.', 'error');
+    }
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: (staff) => adminApi.updateStaff(staff.id, { is_active: !staff.is_active }),
+    onSuccess: () => {
+      addToast('Staff status updated.', 'success');
+      setDeactivatingStaff(null);
+      queryClient.invalidateQueries({ queryKey: ['admin', 'staff'] });
+    },
+    onError: (err) => {
+      addToast(err.response?.data?.detail || 'Action failed.', 'error');
+    }
   });
 
   const handleOpenCreate = () => {
     setEditingStaff(null);
-    setFormData({ name: '', email: '', phone: '', role: 'kitchen', active: true });
+    setFormData({ full_name: '', email: '', phone: '', password: '', role: 'kitchen', is_active: true });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (staff) => {
     setEditingStaff(staff);
     setFormData({
-      name: staff.name,
-      email: staff.email,
-      phone: staff.phone,
-      role: staff.role,
-      active: staff.active,
+      full_name: staff.full_name || staff.name || '',
+      email: staff.email || '',
+      phone: staff.phone || '',
+      password: '',
+      role: staff.role || 'kitchen',
+      is_active: staff.is_active ?? true,
     });
     setIsModalOpen(true);
   };
 
   const handleSave = (e) => {
     e.preventDefault();
-    if (editingStaff) {
-      addToast(`Staff member ${formData.name} updated.`, 'success');
-    } else {
-      addToast(`New staff member ${formData.name} onboarded!`, 'success');
-    }
-    setIsModalOpen(false);
+    saveMutation.mutate(formData);
   };
 
-  const filteredStaff = (Array.isArray(staffList) ? staffList : []).filter((s) => {
-    if (!s) return false;
-    const nameStr = (s.name || s.full_name || '').toLowerCase();
-    const emailStr = (s.email || '').toLowerCase();
-    const roleStr = (s.role || '').toLowerCase();
-    const matchesSearch =
-      nameStr.includes(searchTerm.toLowerCase()) ||
-      emailStr.includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || roleStr === roleFilter;
-    return matchesSearch && matchesRole;
-  });
-
   const columns = [
-    { key: 'name', header: 'Staff Member', sortable: true, render: (val, row) => (
+    {
+      header: 'Staff Member',
+      accessor: (row) => (
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center font-bold text-amber-500 text-xs">
-            {val.charAt(0)}
+            {(row.full_name || row.name || 'S').charAt(0)}
           </div>
           <div>
-            <p className="font-bold text-slate-800 dark:text-slate-100">{val}</p>
+            <p className="font-bold text-slate-800 dark:text-slate-100">{row.full_name || row.name}</p>
             <span className="text-[10px] text-slate-400">{row.email}</span>
           </div>
         </div>
-      )
+      ),
     },
-    { key: 'role', header: 'Assigned Role', sortable: true, render: (val) => (
+    {
+      header: 'Assigned Role',
+      accessor: (row) => (
         <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-          val === 'admin' || val === 'manager'
+          row.role === 'admin' || row.role === 'super_admin'
             ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-400 border border-purple-200'
             : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200'
         }`}>
-          {val}
+          {row.role}
         </span>
-      )
+      ),
     },
-    { key: 'phone', header: 'Contact Phone' },
-    { key: 'active', header: 'Status', sortable: true, render: (val) => <StatusBadge status={val ? 'active' : 'inactive'} /> },
-    { key: 'joinedDate', header: 'Joined' },
+    { header: 'Contact Phone', accessor: (row) => row.phone || 'N/A' },
+    { header: 'Status', accessor: (row) => <StatusBadge status={row.is_active ? 'active' : 'inactive'} /> },
     {
-      key: 'actions',
       header: 'Actions',
-      render: (_, row) => (
+      accessor: (row) => (
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleOpenEdit(row)}
@@ -146,16 +148,25 @@ export const StaffPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">Staff Management</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Onboard staff, assign roles (Kitchen vs Admin/Manager), and toggle status</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Onboard staff, assign roles (Kitchen vs Admin), and manage active status</p>
         </div>
 
-        <button
-          onClick={handleOpenCreate}
-          className="px-4 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-500/20 hover:bg-amber-600 flex items-center gap-2 transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Staff Member</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 text-amber-500 ${isFetching ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleOpenCreate}
+            className="px-4 py-2.5 rounded-xl bg-amber-500 text-white font-bold text-xs shadow-md shadow-amber-500/20 hover:bg-amber-600 flex items-center gap-2 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Staff Member</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
@@ -167,7 +178,7 @@ export const StaffPage = () => {
         />
 
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-medium shrink-0">
-          {['all', 'admin', 'manager', 'kitchen'].map((r) => (
+          {['all', 'admin', 'kitchen'].map((r) => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}
@@ -185,7 +196,7 @@ export const StaffPage = () => {
 
       <Table
         columns={columns}
-        data={filteredStaff}
+        data={staffList}
         isLoading={isLoading}
         emptyMessage="No staff members found."
       />
@@ -203,8 +214,8 @@ export const StaffPage = () => {
             <input
               type="text"
               required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              value={formData.full_name}
+              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
               placeholder="e.g. Chef Robert"
               className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
@@ -215,12 +226,27 @@ export const StaffPage = () => {
             <input
               type="email"
               required
+              disabled={!!editingStaff}
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               placeholder="staff@smartserve.com"
               className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
           </div>
+
+          {!editingStaff && (
+            <div>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">Password</label>
+              <input
+                type="password"
+                required
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Initial password"
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">Phone Number</label>
@@ -241,7 +267,6 @@ export const StaffPage = () => {
               className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
             >
               <option value="kitchen">Kitchen Staff</option>
-              <option value="manager">Manager</option>
               <option value="admin">Administrator</option>
             </select>
           </div>
@@ -256,27 +281,28 @@ export const StaffPage = () => {
             </button>
             <button
               type="submit"
+              disabled={saveMutation.isPending}
               className="px-5 py-2 rounded-xl bg-amber-500 text-white font-bold hover:bg-amber-600 shadow-md shadow-amber-500/20"
             >
-              Save Staff Details
+              {saveMutation.isPending ? 'Saving...' : 'Save Staff Details'}
             </button>
           </div>
         </form>
       </Modal>
 
       {/* Deactivate Dialog */}
-      <ConfirmationDialog
-        isOpen={!!deactivatingStaff}
-        onClose={() => setDeactivatingStaff(null)}
-        onConfirm={() => {
-          addToast(`Status toggled for ${deactivatingStaff?.name}.`, 'success');
-          setDeactivatingStaff(null);
-        }}
-        title="Deactivate Staff"
-        message={`Are you sure you want to deactivate ${deactivatingStaff?.name}? They will lose dashboard access.`}
-        confirmText="Deactivate"
-        isDanger={true}
-      />
+      {deactivatingStaff && (
+        <ConfirmationDialog
+          isOpen={!!deactivatingStaff}
+          onClose={() => setDeactivatingStaff(null)}
+          onConfirm={() => toggleActiveMutation.mutate(deactivatingStaff)}
+          title="Toggle Staff Status"
+          message={`Are you sure you want to ${deactivatingStaff.is_active ? 'deactivate' : 'activate'} ${deactivatingStaff.full_name || deactivatingStaff.name}?`}
+          confirmLabel={deactivatingStaff.is_active ? 'Deactivate' : 'Activate'}
+          isDanger={deactivatingStaff.is_active}
+          isLoading={toggleActiveMutation.isPending}
+        />
+      )}
     </div>
   );
 };

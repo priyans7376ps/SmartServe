@@ -21,11 +21,10 @@ from sqlalchemy import (
     Enum as SQLEnum,
     JSON,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 import uuid
 
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel, JSONB
 
 
 class PaymentStatus(str, enum.Enum):
@@ -65,12 +64,16 @@ class Payment(BaseModel):
     )
     
     # Payment identification
+    provider: Mapped[str] = Column(String(50), default="razorpay", nullable=False, server_default='razorpay')
+    provider_order_id: Mapped[Optional[str]] = Column(String(255), nullable=True, index=True)
+    provider_payment_id: Mapped[Optional[str]] = Column(String(255), nullable=True, index=True)
+    provider_signature: Mapped[Optional[str]] = Column(String(500), nullable=True)
     transaction_id: Mapped[Optional[str]] = Column(
         String(255), unique=True, nullable=True, index=True
     )  # External gateway transaction ID
     payment_intent_id: Mapped[Optional[str]] = Column(
         String(255), nullable=True, index=True
-    )  # Stripe payment intent ID
+    )  # Stripe/Razorpay intent ID
     
     # Payment details
     payment_method: Mapped[PaymentMethod] = Column(
@@ -79,10 +82,11 @@ class Payment(BaseModel):
     payment_status: Mapped[PaymentStatus] = Column(
         SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False
     )
+    failure_reason: Mapped[Optional[str]] = Column(Text, nullable=True)
     
     # Amounts
     amount: Mapped[float] = Column(Float, nullable=False)
-    currency: Mapped[str] = Column(String(3), default="USD", nullable=False)
+    currency: Mapped[str] = Column(String(3), default="INR", nullable=False)
     tax_amount: Mapped[float] = Column(
         Float, default=0.0, nullable=False, server_default='0.0'
     )
@@ -118,6 +122,9 @@ class Payment(BaseModel):
     
     # Timing
     paid_at: Mapped[Optional[datetime]] = Column(
+        DateTime(timezone=True), nullable=True
+    )
+    verified_at: Mapped[Optional[datetime]] = Column(
         DateTime(timezone=True), nullable=True
     )
     refunded_at: Mapped[Optional[datetime]] = Column(

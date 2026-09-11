@@ -14,6 +14,7 @@ from app.models.coupon import Coupon, CouponUsage
 from app.models.complaint import Complaint
 from app.models.notification import Notification
 from app.models.loyalty import LoyaltyPoints, LoyaltyReward
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "Role",
@@ -37,4 +38,5 @@ __all__ = [
     "Notification",
     "LoyaltyPoints",
     "LoyaltyReward",
+    "AuditLog",
 ]

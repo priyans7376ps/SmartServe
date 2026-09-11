@@ -16,11 +16,10 @@ from sqlalchemy import (
     ForeignKey,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 import uuid
 
-from app.database.base import BaseModel
+from app.database.base import UUID,  BaseModel
 
 
 class Table(BaseModel):

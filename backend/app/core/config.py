@@ -57,9 +57,9 @@ class Settings(BaseSettings):
         raise ValueError(v)
 
     # Database
-    DATABASE_URL: PostgresDsn = os.getenv(
+    DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://smartserve:smartserve@localhost:5432/smartserve",
+        "sqlite+aiosqlite:///./smartserve.db",
     )
     DATABASE_SYNC_URL: str = os.getenv(
         "DATABASE_SYNC_URL",
@@ -92,10 +92,15 @@ class Settings(BaseSettings):
     MAX_ITEMS_PER_ORDER: int = 50
     PREPARATION_TIME_BUFFER: int = 5  # minutes
 
-    # Payment
-    CURRENCY: str = "USD"
-    TAX_RATE: float = 0.08  # 8%
+    # Payment & Razorpay Gateway
+    CURRENCY: str = "INR"
+    TAX_RATE: float = 0.05  # 5% GST
     SERVICE_CHARGE_RATE: float = 0.05  # 5%
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "rzp_test_smartserve_key")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "rzp_test_smartserve_secret")
+    RAZORPAY_WEBHOOK_SECRET: str = os.getenv("RAZORPAY_WEBHOOK_SECRET", "rzp_test_webhook_secret")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
 
     # Coupon
     MAX_COUPON_USAGE_PER_USER: int = 1

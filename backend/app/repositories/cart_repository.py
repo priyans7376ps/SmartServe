@@ -10,12 +10,48 @@ class CartRepository(BaseRepository[Cart]):
     def __init__(self, db: AsyncSession):
         super().__init__(Cart, db)
 
-    async def get_active_cart_by_user(self, user_id: uuid.UUID) -> Optional[Cart]:
+    async def get_cart_with_items(self, cart_id: Any) -> Optional[Cart]:
+        if isinstance(cart_id, str):
+            try:
+                cart_id = uuid.UUID(cart_id)
+            except ValueError:
+                pass
+        from sqlalchemy.orm import selectinload
+        stmt = (
+            select(Cart)
+            .options(
+                selectinload(Cart.items).selectinload(CartItem.menu_item),
+                selectinload(Cart.coupon),
+            )
+            .where(Cart.id == cart_id)
+        )
+        result = await self.db.execute(stmt)
+        cart = result.scalars().first()
+        if cart:
+            try:
+                await self.db.refresh(cart, attribute_names=["items"])
+            except Exception:
+                pass
+        return cart
+
+    async def get_by_id_with_items(self, cart_id: Any) -> Optional[Cart]:
+        return await self.get_cart_with_items(cart_id)
+
+    async def get_by_id(self, id: Any) -> Optional[Cart]:
+        return await self.get_cart_with_items(id)
+
+    async def get_active_cart_by_user(self, user_id: Any) -> Optional[Cart]:
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                pass
+
         stmt = select(Cart).where(
             and_(
                 Cart.user_id == user_id,
-                Cart.is_active == True,
-                Cart.is_converted == False
+                Cart.is_active.isnot(False),
+                Cart.is_converted.isnot(True)
             )
         )
         result = await self.db.execute(stmt)
@@ -25,14 +61,24 @@ class CartRepository(BaseRepository[Cart]):
         stmt = select(Cart).where(
             and_(
                 Cart.session_id == session_id,
-                Cart.is_active == True,
-                Cart.is_converted == False
+                Cart.is_active.isnot(False),
+                Cart.is_converted.isnot(True)
             )
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def get_or_create_cart(self, user_id: Optional[uuid.UUID] = None, session_id: Optional[str] = None, table_id: Optional[uuid.UUID] = None) -> Cart:
+    async def get_or_create_cart(self, user_id: Optional[Any] = None, session_id: Optional[str] = None, table_id: Optional[Any] = None) -> Cart:
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                pass
+        if isinstance(table_id, str):
+            try:
+                table_id = uuid.UUID(table_id)
+            except ValueError:
+                pass
         cart = None
         if user_id:
             cart = await self.get_active_cart_by_user(user_id)
@@ -50,7 +96,8 @@ class CartRepository(BaseRepository[Cart]):
                 "discount_amount": 0.0,
             }
             cart = await self.create(cart_data)
-        return cart
+        loaded = await self.get_cart_with_items(cart.id)
+        return loaded or cart
 
     async def add_item_to_cart(
         self,
@@ -58,6 +105,7 @@ class CartRepository(BaseRepository[Cart]):
         menu_item_id: uuid.UUID,
         quantity: int,
         unit_price: float,
+        compare_price: Optional[float] = None,
         notes: Optional[str] = None,
         variant_selected: Optional[Dict[str, Any]] = None,
         add_ons_selected: Optional[List[Dict[str, Any]]] = None,
@@ -78,6 +126,8 @@ class CartRepository(BaseRepository[Cart]):
             existing_item.quantity += quantity
             existing_item.notes = notes or existing_item.notes
             existing_item.unit_price = unit_price
+            if compare_price is not None:
+                existing_item.compare_price = compare_price
             existing_item.add_ons_total = add_ons_total
             self.db.add(existing_item)
             await self.db.commit()
@@ -90,6 +140,7 @@ class CartRepository(BaseRepository[Cart]):
             menu_item_id=menu_item_id,
             quantity=quantity,
             unit_price=unit_price,
+            compare_price=compare_price,
             notes=notes,
             variant_selected=variant_selected,
             add_ons_selected=add_ons_selected or [],
@@ -137,6 +188,7 @@ class CartRepository(BaseRepository[Cart]):
         items = res.scalars().all()
         for item in items:
             await self.db.delete(item)
+        cart.items = []
         cart.coupon_id = None
         cart.coupon_code = None
         cart.discount_amount = 0.0

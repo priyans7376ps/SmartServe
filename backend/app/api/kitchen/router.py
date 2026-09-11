@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db, get_current_kitchen
+from app.core.deps import get_db, get_current_kitchen, get_optional_current_user
 from app.models.user import User, UserRole
 from app.models.order import OrderStatus
 from app.schemas.auth import UserResponse, TokenResponse, UserLogin as LoginRequest
@@ -47,7 +47,7 @@ async def kitchen_login(request: LoginRequest, db: AsyncSession = Depends(get_db
     return response
 
 @router.post("/auth/logout", summary="Kitchen Logout")
-async def kitchen_logout(current_user: User = Depends(get_current_kitchen)):
+async def kitchen_logout(current_user: Optional[User] = Depends(get_optional_current_user)):
     return {"status": "success", "message": "Kitchen staff logged out successfully"}
 
 # -----------------------------------------------------------------------------
@@ -104,11 +104,10 @@ async def get_kitchen_order_details(
     db: AsyncSession = Depends(get_db)
 ):
     service = KitchenService(db)
-    result = await service.get_active_queue(page_size=100)
-    for o in result["orders"]:
-        if o["id"] == str(order_id):
-            return o
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    order = await service.get_order_details(order_id)
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order
 
 # -----------------------------------------------------------------------------
 # 4. ORDER STATUS TRANSITION WORKFLOW APIs

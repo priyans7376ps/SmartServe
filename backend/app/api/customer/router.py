@@ -343,7 +343,7 @@ async def get_checkout_summary(
     db: AsyncSession = Depends(get_db)
 ):
     service = OrderService(db)
-    sid = request.session_id if request else (x_session_id or None)
+    sid = (request.session_id if request and request.session_id else None) or x_session_id
     uid = current_user.id if current_user else None
     return await service.get_checkout_summary(user_id=uid, session_id=sid)
 

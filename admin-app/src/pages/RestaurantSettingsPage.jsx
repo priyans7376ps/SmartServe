@@ -1,52 +1,68 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { Settings, Save, Building, Clock, DollarSign, Image, Mail, Phone, MapPin, Receipt } from 'lucide-react';
-import Card from '../components/common/StatCard';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Save, Building, Clock, Receipt } from 'lucide-react';
 import { useUIStore } from '../store/useUIStore';
-import api from '../api/axios';
+import adminApi from '../api/adminApi';
 
 export const RestaurantSettingsPage = () => {
   const { addToast } = useUIStore();
+  const queryClient = useQueryClient();
 
-  const [settings, setSettings] = useState({
-    name: 'SmartServe Fine Dining',
-    logoUrl: '',
-    address: '124 Gourmet Boulevard, Culinary District, City 400001',
+  const [form, setForm] = useState({
+    name: 'SmartServe Bistro',
+    logo_url: '',
+    address: '124 Gourmet Boulevard, Tech Park',
     phone: '+91 98765 00000',
-    email: 'contact@smartservebistro.com',
-    gst: '27AAAAA0000A1Z5',
-    taxPercentage: 5.0,
-    currency: 'INR (₹)',
-    timezone: 'Asia/Kolkata (IST)',
-    openingHours: '10:00 AM',
-    closingHours: '11:30 PM',
+    email: 'contact@smartserve.com',
+    gstin: '27AAAAA0000A1Z5',
+    tax_rate: 0.05,
+    currency: 'INR',
+    timezone: 'Asia/Kolkata',
+    opening_time: '10:00',
+    closing_time: '23:00',
+    is_open: true,
   });
 
-  const { isLoading } = useQuery({
-    queryKey: ['admin-restaurant-settings'],
-    queryFn: async () => {
-      try {
-        const res = await api.get('/restaurants/');
-        if (res.data && res.data.length > 0) {
-          const r = res.data[0];
-          setSettings((prev) => ({
-            ...prev,
-            name: r.name || prev.name,
-            address: r.address || prev.address,
-            phone: r.phone || prev.phone,
-            email: r.email || prev.email,
-          }));
-        }
-        return res.data;
-      } catch (err) {
-        return null;
-      }
+  const { data: serverSettings, isLoading } = useQuery({
+    queryKey: ['admin', 'restaurant'],
+    queryFn: () => adminApi.getRestaurantSettings(),
+  });
+
+  useEffect(() => {
+    if (serverSettings) {
+      setForm((prev) => ({
+        ...prev,
+        name: serverSettings.name || prev.name,
+        logo_url: serverSettings.logo_url || prev.logo_url,
+        address: serverSettings.address || prev.address,
+        phone: serverSettings.phone || prev.phone,
+        email: serverSettings.email || prev.email,
+        gstin: serverSettings.gstin || prev.gstin,
+        tax_rate: serverSettings.tax_rate ?? prev.tax_rate,
+        currency: serverSettings.currency || prev.currency,
+        timezone: serverSettings.timezone || prev.timezone,
+        opening_time: serverSettings.opening_time || prev.opening_time,
+        closing_time: serverSettings.closing_time || prev.closing_time,
+        is_open: serverSettings.is_open ?? prev.is_open,
+      }));
+    }
+  }, [serverSettings]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data) => adminApi.updateRestaurantSettings(data),
+    onSuccess: () => {
+      addToast('Restaurant settings updated successfully.', 'success');
+      queryClient.invalidateQueries({ queryKey: ['admin', 'restaurant'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
+    onError: (err) => {
+      addToast(err.response?.data?.detail || 'Failed to update settings.', 'error');
+    }
   });
 
   const handleSave = (e) => {
     e.preventDefault();
-    addToast('Restaurant settings updated successfully.', 'success');
+    updateMutation.mutate(form);
   };
 
   return (
@@ -70,9 +86,9 @@ export const RestaurantSettingsPage = () => {
               <input
                 type="text"
                 required
-                value={settings.name}
-                onChange={(e) => setSettings({ ...settings, name: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
               />
             </div>
 
@@ -80,10 +96,10 @@ export const RestaurantSettingsPage = () => {
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Logo Image URL</label>
               <input
                 type="text"
-                value={settings.logoUrl}
-                onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
+                value={form.logo_url}
+                onChange={(e) => setForm({ ...form, logo_url: e.target.value })}
                 placeholder="https://cloud.com/logo.png"
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
 
@@ -92,9 +108,9 @@ export const RestaurantSettingsPage = () => {
               <input
                 type="text"
                 required
-                value={settings.address}
-                onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
 
@@ -103,9 +119,9 @@ export const RestaurantSettingsPage = () => {
               <input
                 type="text"
                 required
-                value={settings.phone}
-                onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
 
@@ -114,9 +130,9 @@ export const RestaurantSettingsPage = () => {
               <input
                 type="email"
                 required
-                value={settings.email}
-                onChange={(e) => setSettings({ ...settings, email: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
           </div>
@@ -131,36 +147,38 @@ export const RestaurantSettingsPage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">GST Registration Number</label>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">GSTIN Registration</label>
               <input
                 type="text"
-                value={settings.gst}
-                onChange={(e) => setSettings({ ...settings, gst: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
+                value={form.gstin}
+                onChange={(e) => setForm({ ...form, gstin: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-white"
               />
             </div>
 
             <div>
-              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Tax Percentage (%)</label>
+              <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Tax Rate (Decimal e.g. 0.05 = 5%)</label>
               <input
                 type="number"
-                step="0.1"
-                value={settings.taxPercentage}
-                onChange={(e) => setSettings({ ...settings, taxPercentage: Number(e.target.value) })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                step="0.01"
+                min="0"
+                max="0.5"
+                value={form.tax_rate}
+                onChange={(e) => setForm({ ...form, tax_rate: Number(e.target.value) })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
               />
             </div>
 
             <div>
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Currency Symbol</label>
               <select
-                value={settings.currency}
-                onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
               >
-                <option value="INR (₹)">INR (₹)</option>
-                <option value="USD ($)">USD ($)</option>
-                <option value="EUR (€)">EUR (€)</option>
+                <option value="INR">INR (₹)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
               </select>
             </div>
           </div>
@@ -178,9 +196,9 @@ export const RestaurantSettingsPage = () => {
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Timezone</label>
               <input
                 type="text"
-                disabled
-                value={settings.timezone}
-                className="w-full p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 text-slate-400 cursor-not-allowed"
+                value={form.timezone}
+                onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
 
@@ -188,9 +206,9 @@ export const RestaurantSettingsPage = () => {
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Opening Hours</label>
               <input
                 type="text"
-                value={settings.openingHours}
-                onChange={(e) => setSettings({ ...settings, openingHours: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                value={form.opening_time}
+                onChange={(e) => setForm({ ...form, opening_time: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
 
@@ -198,9 +216,9 @@ export const RestaurantSettingsPage = () => {
               <label className="block font-semibold mb-1 text-slate-700 dark:text-slate-300">Closing Hours</label>
               <input
                 type="text"
-                value={settings.closingHours}
-                onChange={(e) => setSettings({ ...settings, closingHours: e.target.value })}
-                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                value={form.closing_time}
+                onChange={(e) => setForm({ ...form, closing_time: e.target.value })}
+                className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white"
               />
             </div>
           </div>
@@ -209,10 +227,11 @@ export const RestaurantSettingsPage = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
+            disabled={updateMutation.isPending}
             className="px-6 py-3 rounded-xl bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-500/25 hover:bg-amber-600 flex items-center gap-2 transition-all"
           >
             <Save className="w-4 h-4" />
-            <span>Save Restaurant Configuration</span>
+            <span>{updateMutation.isPending ? 'Saving...' : 'Save Restaurant Configuration'}</span>
           </button>
         </div>
       </form>

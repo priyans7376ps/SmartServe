@@ -42,6 +42,9 @@ setup_security_middleware(app)
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
 
+from app.database.connection import engine, async_session_factory
+from app.seed import seed_menu_data
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("SmartServe API starting up...")
@@ -49,6 +52,13 @@ async def startup_event():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables initialized successfully.")
+
+        # Seed realistic menu categories and items safely
+        try:
+            async with async_session_factory() as session:
+                await seed_menu_data(session)
+        except Exception as seed_err:
+            logger.warning(f"Menu seeding skipped or deferred: {seed_err}")
     except Exception as e:
         logger.warning(f"Database connection deferred during startup: {e}")
 
