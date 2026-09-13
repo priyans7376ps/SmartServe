@@ -43,7 +43,7 @@ export default function OrderCard({ order, onViewDetails }) {
         'bg-[#131b2e] border rounded-3xl p-5 shadow-xl transition-all duration-200 flex flex-col justify-between cursor-pointer select-none relative overflow-hidden',
         status === 'preparing' ? 'border-blue-500/50 shadow-glow-blue' :
         status === 'ready' ? 'border-emerald-500/50 shadow-glow-emerald' :
-        status === 'pending' ? 'border-amber-500/50 shadow-glow-amber' :
+        (status === 'pending' || status === 'confirmed' || status === 'accepted') ? 'border-amber-500/50 shadow-glow-amber' :
         status === 'cancelled' ? 'border-rose-500/40 opacity-75' :
         'border-slate-800'
       )}
@@ -63,9 +63,12 @@ export default function OrderCard({ order, onViewDetails }) {
             </p>
           </div>
 
-          <div className="flex flex-col items-end gap-1">
-            <Badge type="status" value={status} />
-            {order.is_priority && <Badge type="priority" />}
+          <div className="flex flex-col items-end gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              <Badge type="status" value={status} />
+              {order.is_priority && <Badge type="priority" />}
+            </div>
+            <Badge type="payment" status={order.payment_status} method={order.payment_method} />
           </div>
         </div>
 
@@ -92,7 +95,7 @@ export default function OrderCard({ order, onViewDetails }) {
                 <Badge type="diet" value={item.is_veg !== undefined ? item.is_veg : true} />
               </div>
               <span className="font-mono text-slate-400 font-bold shrink-0">
-                ${(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                ₹{(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
               </span>
             </div>
           ))}
@@ -115,7 +118,7 @@ export default function OrderCard({ order, onViewDetails }) {
 
       {/* Action Footer Buttons */}
       <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2">
-        {status === 'pending' && (
+        {(status === 'pending' || status === 'confirmed' || status === 'accepted') && (
           <>
             <Button
               variant="preparing"

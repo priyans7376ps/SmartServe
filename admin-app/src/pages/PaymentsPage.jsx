@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Download, RefreshCw, DollarSign } from 'lucide-react';
+import { Download, RefreshCw, DollarSign, ArrowUpRight } from 'lucide-react';
 import Table from '../components/common/Table';
 import StatusBadge from '../components/common/StatusBadge';
 import SearchBar from '../components/common/SearchBar';
@@ -8,6 +8,7 @@ import Pagination from '../components/common/Pagination';
 import ConfirmationDialog from '../components/common/ConfirmationDialog';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const PaymentsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +22,7 @@ export const PaymentsPage = () => {
   const limit = 10;
 
   // Fetch real payments from backend
-  const { data: payments = [], isLoading, refetch, isFetching } = useQuery({
+  const { data: rawPayments = [], isLoading, refetch, isFetching } = useQuery({
     queryKey: ['admin', 'payments', searchTerm, statusFilter, methodFilter, currentPage],
     queryFn: () => adminApi.getPayments({
       query: searchTerm,
@@ -32,6 +33,10 @@ export const PaymentsPage = () => {
     }),
   });
 
+  const payments = Array.isArray(rawPayments) ? rawPayments : (rawPayments?.items || []);
+  const totalCount = Array.isArray(rawPayments) ? (rawPayments.length < limit && currentPage === 1 ? rawPayments.length : 50) : (rawPayments?.total || payments.length);
+  const totalPages = Math.ceil(totalCount / limit) || 1;
+
   const refundMutation = useMutation({
     mutationFn: ({ paymentId, reason }) => adminApi.refundPayment(paymentId, null, reason),
     onSuccess: () => {
@@ -41,28 +46,35 @@ export const PaymentsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Refund failed.', 'error');
+      addToast(getErrorMessage(err, 'Refund failed.'), 'error');
     }
   });
 
   const columns = [
     {
-      header: 'Transaction / Order ID',
+      header: 'Transaction / Order',
       accessor: (row) => (
         <div>
           <span className="font-mono text-xs font-bold text-amber-500 block">
-            {row.transaction_id || row.provider_payment_id || row.provider_order_id || row.id}
+            {row.transaction_id || row.provider_payment_id || row.provider_order_id || (row.id ? String(row.id).slice(0, 13) : 'TXN-N/A')}
           </span>
-          <span className="text-[11px] text-slate-400">Order: {row.order_id}</span>
+          <span className="text-[11px] text-slate-400 font-medium">
+            Order: {row.order_number || (row.order_id ? String(row.order_id).slice(0, 8) : 'N/A')}
+          </span>
         </div>
       ),
     },
     {
       header: 'Customer',
       accessor: (row) => (
-        <span className="font-bold text-slate-800 dark:text-slate-200">
-          {row.billing_name || 'Guest Customer'}
-        </span>
+        <div>
+          <span className="font-bold text-slate-800 dark:text-slate-200 block">
+            {row.billing_name || 'Guest Customer'}
+          </span>
+          {row.billing_email && (
+            <span className="text-[11px] text-slate-400 font-medium">{row.billing_email}</span>
+          )}
+        </div>
       ),
     },
     {
@@ -136,7 +148,7 @@ export const PaymentsPage = () => {
         <SearchBar
           value={searchTerm}
           onChange={(val) => { setSearchTerm(val); setCurrentPage(1); }}
-          placeholder="Search by Transaction ID or Customer..."
+          placeholder="Search by Transaction ID, Order #, or Customer..."
           className="w-full md:w-80"
         />
 
@@ -159,7 +171,7 @@ export const PaymentsPage = () => {
             className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none"
           >
             <option value="all">All Statuses</option>
-            <option value="completed">Completed</option>
+            <option value="completed">Completed / Paid</option>
             <option value="pending">Pending</option>
             <option value="failed">Failed</option>
             <option value="refunded">Refunded</option>
@@ -173,6 +185,15 @@ export const PaymentsPage = () => {
         isLoading={isLoading}
         emptyMessage="No payment transactions found."
       />
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+        />
+      )}
 
       {/* Confirmation for Refund */}
       {refundingPayment && (

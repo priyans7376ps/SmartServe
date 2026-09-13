@@ -20,4 +20,15 @@ export const menuApi = {
     const res = await api.delete(`/kitchen/menu/${itemId}`);
     return res.data;
   },
+
+  uploadImage: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'menu_items');
+    // Let browser set the multipart/form-data boundary automatically
+    const res = await api.post('/media/upload', formData);
+    return res.data;
+  },
 };
+
+export default menuApi;

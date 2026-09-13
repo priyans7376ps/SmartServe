@@ -48,6 +48,7 @@ class PaymentResponse(BaseModel):
 
     id: uuid.UUID
     order_id: uuid.UUID
+    order_number: Optional[str] = None
     user_id: Optional[uuid.UUID] = None
     provider: str
     provider_order_id: Optional[str] = None

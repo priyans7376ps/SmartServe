@@ -72,10 +72,14 @@ class Order(BaseModel):
     completed_at: Mapped[Optional[datetime]] = Column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[Optional[datetime]] = Column(DateTime(timezone=True), nullable=True)
 
-    restaurant = relationship("Restaurant", back_populates="orders", lazy="selectin")
+    restaurant = relationship("Restaurant", back_populates="orders", lazy="select")
     user = relationship("User", back_populates="orders", lazy="selectin")
     table = relationship("Table", back_populates="orders", lazy="selectin")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     status_logs = relationship("OrderStatusLog", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     payment = relationship("Payment", back_populates="order", uselist=False, lazy="selectin")
     coupon = relationship("Coupon", lazy="selectin")
+
+    @property
+    def token_number(self) -> str:
+        return f"TKN-{self.order_number[-4:]}" if self.order_number else "TKN-0000"

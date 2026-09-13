@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Building, Clock, Receipt } from 'lucide-react';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const RestaurantSettingsPage = () => {
   const { addToast } = useUIStore();
@@ -56,7 +57,7 @@ export const RestaurantSettingsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Failed to update settings.', 'error');
+      addToast(getErrorMessage(err, 'Failed to update settings.'), 'error');
     }
   });
 

@@ -28,11 +28,12 @@ export default function OrderDetailsModal({ isOpen, onClose, order }) {
         {/* Header Metadata */}
         <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <span className="text-2xl font-black font-mono text-amber-400">
                 #{order.token_number || '101'}
               </span>
               <Badge type="status" value={status} />
+              <Badge type="payment" status={order.payment_status} method={order.payment_method} />
               <Badge type="customer" value={order.customer_type} />
             </div>
             <p className="text-xs font-bold text-slate-300">
@@ -91,7 +92,7 @@ export default function OrderDetailsModal({ isOpen, onClose, order }) {
                     {item.quantity}x
                   </span>
                   <span className="text-sm font-mono font-bold text-slate-200">
-                    ${(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                    ₹{(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -103,7 +104,7 @@ export default function OrderDetailsModal({ isOpen, onClose, order }) {
         <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between text-xs font-bold">
           <span className="text-slate-400 uppercase tracking-wider">Total Order Amount</span>
           <span className="text-xl font-black text-amber-400 font-mono">
-            ${(order.items || []).reduce((acc, i) => acc + Number(i.price || 0) * (i.quantity || 1), 0).toFixed(2)}
+            ₹{Number(order.total_amount !== undefined ? order.total_amount : (order.items || []).reduce((acc, i) => acc + Number(i.price || 0) * (i.quantity || 1), 0)).toFixed(2)}
           </span>
         </div>
 
@@ -114,7 +115,7 @@ export default function OrderDetailsModal({ isOpen, onClose, order }) {
           </Button>
 
           <div className="flex items-center gap-2">
-            {status === 'pending' && (
+            {(status === 'pending' || status === 'confirmed' || status === 'accepted') && (
               <Button variant="preparing" size="md" icon={ChefHat} onClick={() => handleStatusUpdate('preparing')}>
                 Accept & Start Preparing
               </Button>

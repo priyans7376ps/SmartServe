@@ -3,6 +3,7 @@ import { Lock, LogOut, Save } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const ProfilePage = () => {
   const { user, logout } = useAuthStore();
@@ -31,7 +32,7 @@ export const ProfilePage = () => {
       addToast('Password changed successfully.', 'success');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
-      addToast(err.response?.data?.detail || 'Failed to change password.', 'error');
+      addToast(getErrorMessage(err, 'Failed to change password.'), 'error');
     } finally {
       setIsSubmitting(false);
     }

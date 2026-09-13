@@ -7,6 +7,7 @@ import SearchBar from '../components/common/SearchBar';
 import Modal from '../components/common/Modal';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const ComplaintsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,7 +35,7 @@ export const ComplaintsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'complaints'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Failed to update complaint.', 'error');
+      addToast(getErrorMessage(err, 'Failed to update complaint.'), 'error');
     }
   });
 

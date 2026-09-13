@@ -21,13 +21,6 @@ class MenuService:
         return re.sub(r'[-\s]+', '-', slug)
 
     async def create_menu_item(self, data: MenuItemCreate) -> MenuItemResponse:
-        restaurant = await self.restaurant_repo.get_by_id(data.restaurant_id)
-        if not restaurant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Restaurant not found."
-            )
-
         category = await self.category_repo.get_by_id(data.category_id)
         if not category:
             raise HTTPException(
@@ -35,13 +28,32 @@ class MenuService:
                 detail="Category not found."
             )
 
+        restaurant_id = data.restaurant_id or category.restaurant_id
+        if not restaurant_id:
+            rests = await self.restaurant_repo.get_all(limit=1)
+            if rests:
+                restaurant_id = rests[0].id
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No active restaurant found."
+                )
+
+        restaurant = await self.restaurant_repo.get_by_id(restaurant_id)
+        if not restaurant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Restaurant not found."
+            )
+
         slug = data.slug or self._generate_slug(data.name)
-        existing = await self.repo.get_by_slug(data.restaurant_id, slug)
+        existing = await self.repo.get_by_slug(restaurant_id, slug)
         if existing:
             import uuid as uuid_mod
             slug = f"{slug}-{uuid_mod.uuid4().hex[:6]}"
 
         item_dict = data.model_dump()
+        item_dict["restaurant_id"] = restaurant_id
         item_dict["slug"] = slug
         item_dict.setdefault("is_available", True)
         item_dict.setdefault("is_active", True)

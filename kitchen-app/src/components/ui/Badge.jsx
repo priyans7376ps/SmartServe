@@ -1,16 +1,18 @@
 import React from 'react';
-import { Flame, Sparkles, Star, Clock, AlertTriangle, Leaf, Drumstick, CheckCircle, XCircle } from 'lucide-react';
+import { Flame, Sparkles, Star, Clock, AlertTriangle, Leaf, Drumstick, CheckCircle, XCircle, CreditCard, Banknote, RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/cn';
 
-export default function Badge({ type = 'status', value, text, className = '' }) {
+export default function Badge({ type = 'status', value, status, method, text, className = '' }) {
   // Order status badge
   if (type === 'status') {
     const statusMap = {
       pending: { label: 'PENDING', bg: 'bg-amber-500/15 text-amber-400 border-amber-500/30', icon: Clock },
+      confirmed: { label: 'CONFIRMED', bg: 'bg-blue-500/15 text-blue-400 border-blue-500/30', icon: CheckCircle },
       accepted: { label: 'ACCEPTED', bg: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30', icon: Clock },
       preparing: { label: 'PREPARING', bg: 'bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse-fast', icon: Flame },
       ready: { label: 'READY', bg: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', icon: CheckCircle },
       completed: { label: 'COMPLETED', bg: 'bg-slate-800 text-slate-400 border-slate-700', icon: CheckCircle },
+      delivered: { label: 'DELIVERED', bg: 'bg-slate-800 text-slate-400 border-slate-700', icon: CheckCircle },
       cancelled: { label: 'CANCELLED', bg: 'bg-rose-500/15 text-rose-400 border-rose-500/30', icon: XCircle },
     };
 
@@ -21,6 +23,62 @@ export default function Badge({ type = 'status', value, text, className = '' }) 
       <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border', config.bg, className)}>
         <Icon className="w-3 h-3" />
         <span>{text || config.label}</span>
+      </span>
+    );
+  }
+
+  // Payment status badge
+  if (type === 'payment') {
+    const payStatus = String(status || value || 'pending').toLowerCase();
+    const payMethod = String(method || '').toLowerCase();
+
+    // 1. Paid
+    if (payStatus === 'paid' || payStatus === 'completed') {
+      const methodLabel = payMethod === 'cash' ? 'Cash' : (payMethod === 'razorpay' || payMethod === 'online' ? 'Razorpay' : (payMethod.toUpperCase() || 'Online'));
+      return (
+        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border bg-emerald-500/15 text-emerald-400 border-emerald-500/30', className)}>
+          <CreditCard className="w-3 h-3 text-emerald-400" />
+          <span>PAID &bull; {methodLabel}</span>
+        </span>
+      );
+    }
+
+    // 2. Pay at table / Cash pending
+    if (payMethod === 'cash' || payMethod === 'pay_at_table' || payStatus === 'paid_cash') {
+      return (
+        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border bg-amber-500/15 text-amber-400 border-amber-500/30', className)}>
+          <Banknote className="w-3 h-3 text-amber-400" />
+          <span>PAY AT TABLE &bull; Cash</span>
+        </span>
+      );
+    }
+
+    // 3. Failed
+    if (payStatus === 'failed') {
+      return (
+        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border bg-rose-500/15 text-rose-400 border-rose-500/30', className)}>
+          <XCircle className="w-3 h-3 text-rose-400" />
+          <span>PAYMENT FAILED</span>
+        </span>
+      );
+    }
+
+    // 4. Refunded
+    if (payStatus === 'refunded' || payStatus === 'partially_refunded') {
+      return (
+        <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border bg-purple-500/15 text-purple-400 border-purple-500/30', className)}>
+          <RotateCcw className="w-3 h-3 text-purple-400" />
+          <span>REFUNDED</span>
+        </span>
+      );
+    }
+
+    // 5. Pending Online Payment (Razorpay, UPI, etc.)
+    const onlineMethod = payMethod === 'upi' ? 'UPI' : 'Razorpay';
+    return (
+      <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider border bg-amber-500/15 text-amber-400 border-amber-500/30', className)}>
+        <Clock className="w-3 h-3 text-amber-400" />
+        <span>PAYMENT PENDING &bull; {onlineMethod}</span>
       </span>
     );
   }

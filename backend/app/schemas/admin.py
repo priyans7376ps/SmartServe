@@ -29,8 +29,12 @@ class DashboardStatsResponse(BaseModel):
     registered_customers: int
     guest_customers: int
     active_tables: int
+    active_staff: Optional[int] = 0
     total_menu_items: int
     out_of_stock_items: int
+    today_payments: Optional[int] = 0
+    pending_payments: Optional[int] = 0
+    failed_payments: Optional[int] = 0
     restaurant_name: str
     revenue_comparison: Optional[MetricComparison] = None
     orders_comparison: Optional[MetricComparison] = None
@@ -149,7 +153,27 @@ class CouponUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_public: Optional[bool] = None
     display_name: Optional[str] = None
+class CouponResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    restaurant_id: Optional[uuid.UUID] = None
+    code: str
+    description: Optional[str] = None
+    discount_type: str
+    discount_value: float
+    max_discount_amount: Optional[float] = None
+    min_order_amount: Optional[float] = None
+    max_usage_count: Optional[int] = None
+    max_usage_per_user: int = 1
+    used_count: int = 0
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: bool = True
+    is_public: bool = True
+    display_name: Optional[str] = None
     terms_conditions: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 # Restaurant Settings Schemas

@@ -1,13 +1,13 @@
 """
 SmartServe Admin API Router
-Includes protected endpoints for all 14 Admin Portal modules.
+Includes protected endpoints for all 11 Admin Portal modules.
 Enforces strict server-side Admin role check (`get_current_admin`).
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
-from fastapi import APIRouter, Depends, status, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, status, Query, HTTPException, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -37,6 +37,7 @@ from app.schemas.admin import (
     ComplaintResponse,
     CouponCreate,
     CouponUpdate,
+    CouponResponse,
     RestaurantSettingsUpdate,
     AdminProfileUpdate,
     ChangePasswordRequest,
@@ -58,7 +59,7 @@ async def get_admin_status(current_user: User = Depends(get_current_admin)):
 
 
 # -------------------------------------------------------------
-# 1. DASHBOARD ANALYTICS
+# 1. DASHBOARD ANALYTICS & OVERVIEW
 # -------------------------------------------------------------
 @router.get("/dashboard/stats", response_model=DashboardStatsResponse, summary="Get real-time dashboard statistics")
 async def get_dashboard_stats(
@@ -87,18 +88,40 @@ async def get_category_sales(
     return await service.get_category_sales()
 
 
+@router.get("/dashboard", summary="Get comprehensive dashboard overview")
+async def get_dashboard_overview(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    return await service.get_dashboard_overview()
+
+
 # -------------------------------------------------------------
-# 2. REVENUE ANALYTICS
+# 2. REVENUE & EXECUTIVE ANALYTICS
 # -------------------------------------------------------------
 @router.get("/analytics/revenue", response_model=RevenueAnalyticsResponse, summary="Get revenue analytics")
 async def get_revenue_analytics(
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
+    timeframe: Optional[str] = Query("daily"),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
     service = AdminService(db)
-    return await service.get_revenue_analytics(start_date=start_date, end_date=end_date)
+    return await service.get_revenue_analytics(start_date=start_date, end_date=end_date, timeframe=timeframe)
+
+
+@router.get("/analytics", summary="Get executive analytics (alias)")
+async def get_analytics_alias(
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    timeframe: Optional[str] = Query("daily"),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    return await service.get_revenue_analytics(start_date=start_date, end_date=end_date, timeframe=timeframe)
 
 
 # -------------------------------------------------------------
@@ -108,29 +131,56 @@ async def get_revenue_analytics(
 async def list_admin_orders(
     query: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
+    payment_status: Optional[str] = Query(None),
+    payment_method: Optional[str] = Query(None),
+    date_from: Optional[datetime] = Query(None),
+    date_to: Optional[datetime] = Query(None),
+    order_type: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
     order_repo = OrderRepository(db)
-    orders, total = await order_repo.search_orders(query=query, status=status, skip=skip, limit=limit)
+    orders, total = await order_repo.search_orders(
+        query=query,
+        status=status,
+        payment_status=payment_status,
+        payment_method=payment_method,
+        date_from=date_from,
+        date_to=date_to,
+        order_type=order_type,
+        skip=skip,
+        limit=limit
+    )
     return {
         "items": [
             {
                 "id": str(o.id),
                 "order_number": o.order_number,
+                "token_number": o.token_number,
                 "customer_name": o.customer_name or (o.user.full_name if o.user else "Guest"),
                 "customer_phone": o.customer_phone,
                 "customer_email": o.customer_email,
                 "table_number": o.table.table_number if o.table else None,
-                "order_type": o.order_type.value,
-                "status": o.status.value,
+                "order_type": o.order_type.value if hasattr(o.order_type, 'value') else str(o.order_type),
+                "status": o.status.value if hasattr(o.status, 'value') else str(o.status),
                 "payment_status": o.payment_status,
                 "payment_method": o.payment_method,
                 "total_amount": o.total_amount,
-                "item_count": len(o.items),
-                "items": [{"name": i.item_name, "quantity": i.quantity, "unit_price": i.unit_price} for i in o.items],
+                "item_count": len(o.items) if o.items else 0,
+                "items": [
+                    {
+                        "name": i.item_name,
+                        "item_name": i.item_name,
+                        "quantity": i.quantity,
+                        "unit_price": i.unit_price,
+                        "subtotal": i.subtotal,
+                        "variant_selected": i.variant_selected,
+                        "add_ons_selected": i.add_ons_selected
+                    }
+                    for i in (o.items or [])
+                ],
                 "placed_at": o.placed_at.isoformat() if o.placed_at else None,
             }
             for o in orders
@@ -138,6 +188,61 @@ async def list_admin_orders(
         "total": total,
         "skip": skip,
         "limit": limit
+    }
+
+
+@router.get("/orders/{order_id}", summary="Get order details (Admin)")
+async def get_order_details(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    details = await service.get_order_details(order_id)
+    if not details:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return details
+
+
+@router.patch("/orders/{order_id}/status", summary="Update order status (Admin)")
+async def update_order_status(
+    order_id: uuid.UUID,
+    payload: Dict[str, Any] = Body(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    order_repo = OrderRepository(db)
+    audit_repo = AuditRepository(db)
+    order = await order_repo.get_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    new_status = payload.get("status")
+    if new_status:
+        try:
+            order.status = OrderStatus(new_status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid order status: {new_status}")
+
+    if "payment_status" in payload:
+        order.payment_status = payload["payment_status"]
+    if "cancellation_reason" in payload:
+        order.cancellation_reason = payload["cancellation_reason"]
+
+    db.add(order)
+    await db.commit()
+
+    await audit_repo.log_action(
+        admin_id=admin.id,
+        action="ORDER_STATUS_UPDATED",
+        resource_type="order",
+        resource_id=str(order.id),
+        details=payload
+    )
+    return {
+        "message": "Order status updated successfully",
+        "order_id": str(order.id),
+        "status": order.status.value if hasattr(order.status, 'value') else str(order.status)
     }
 
 
@@ -175,7 +280,7 @@ async def cancel_order(
 # -------------------------------------------------------------
 # 4. PAYMENT MANAGEMENT
 # -------------------------------------------------------------
-@router.get("/payments", response_model=List[PaymentResponse], summary="List payment records")
+@router.get("/payments", summary="List payment records")
 async def list_payments(
     query: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
@@ -186,8 +291,13 @@ async def list_payments(
     admin: User = Depends(get_current_admin)
 ):
     service = PaymentService(db)
-    items, _ = await service.payment_repo.search_payments(query=query, status=status, method=method, skip=skip, limit=limit)
-    return items
+    items, total = await service.payment_repo.search_payments(query=query, status=status, method=method, skip=skip, limit=limit)
+    return {
+        "items": [PaymentResponse.model_validate(p) for p in items],
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 
 @router.post("/payments/{payment_id}/refund", response_model=PaymentResponse, summary="Process refund")
@@ -217,6 +327,19 @@ async def list_customers(
     return {"items": items, "total": total}
 
 
+@router.get("/customers/{customer_id}", summary="Get customer details")
+async def get_customer_details(
+    customer_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    customer = await service.get_customer_details(customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return customer
+
+
 # -------------------------------------------------------------
 # 6. STAFF MANAGEMENT
 # -------------------------------------------------------------
@@ -234,6 +357,19 @@ async def list_staff(
     return items
 
 
+@router.get("/staff/{staff_id}", response_model=StaffResponse, summary="Get staff member details")
+async def get_staff_member(
+    staff_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    user_res = await db.execute(select(User).where(User.id == staff_id))
+    staff = user_res.scalars().first()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+    return staff
+
+
 @router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED, summary="Create new staff member")
 async def create_staff(
     payload: StaffCreate,
@@ -246,6 +382,17 @@ async def create_staff(
 
 @router.put("/staff/{staff_id}", response_model=StaffResponse, summary="Update staff member")
 async def update_staff(
+    staff_id: uuid.UUID,
+    payload: StaffUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    return await service.update_staff(staff_id, payload.model_dump(exclude_unset=True), admin_user=admin)
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffResponse, summary="Update staff member (PATCH alias)")
+async def patch_staff(
     staff_id: uuid.UUID,
     payload: StaffUpdate,
     db: AsyncSession = Depends(get_db),
@@ -280,14 +427,39 @@ async def list_complaints(
                 "subject": c.subject,
                 "description": c.description,
                 "category": c.category,
-                "priority": c.priority.value,
-                "status": c.status.value,
+                "priority": c.priority.value if hasattr(c.priority, 'value') else str(c.priority),
+                "status": c.status.value if hasattr(c.status, 'value') else str(c.status),
                 "resolution_notes": c.resolution_notes,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }
             for c in items
         ],
         "total": total
+    }
+
+
+@router.get("/complaints/{complaint_id}", summary="Get complaint details")
+async def get_complaint_details(
+    complaint_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    c = await service.complaint_repo.get_by_id(complaint_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    return {
+        "id": str(c.id),
+        "customer_name": c.user.full_name if c.user else "Customer",
+        "customer_email": c.contact_email or (c.user.email if c.user else None),
+        "order_id": str(c.order_id) if c.order_id else None,
+        "subject": c.subject,
+        "description": c.description,
+        "category": c.category,
+        "priority": c.priority.value if hasattr(c.priority, 'value') else str(c.priority),
+        "status": c.status.value if hasattr(c.status, 'value') else str(c.status),
+        "resolution_notes": c.resolution_notes,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
     }
 
 
@@ -305,7 +477,7 @@ async def update_complaint(
 # -------------------------------------------------------------
 # 8. COUPON MANAGEMENT
 # -------------------------------------------------------------
-@router.get("/coupons", summary="List coupons")
+@router.get("/coupons", response_model=List[CouponResponse], summary="List coupons")
 async def list_coupons(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin)
@@ -315,7 +487,20 @@ async def list_coupons(
     return items
 
 
-@router.post("/coupons", status_code=201, summary="Create coupon")
+@router.get("/coupons/{coupon_id}", response_model=CouponResponse, summary="Get coupon details")
+async def get_coupon(
+    coupon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    coupon_repo = CouponRepository(db)
+    coupon = await coupon_repo.get_by_id(coupon_id)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon not found")
+    return coupon
+
+
+@router.post("/coupons", response_model=CouponResponse, status_code=201, summary="Create coupon")
 async def create_coupon(
     payload: CouponCreate,
     db: AsyncSession = Depends(get_db),
@@ -347,7 +532,7 @@ async def create_coupon(
     return coupon
 
 
-@router.put("/coupons/{coupon_id}", summary="Update coupon")
+@router.put("/coupons/{coupon_id}", response_model=CouponResponse, summary="Update coupon")
 async def update_coupon(
     coupon_id: uuid.UUID,
     payload: CouponUpdate,
@@ -371,6 +556,16 @@ async def update_coupon(
     return updated
 
 
+@router.patch("/coupons/{coupon_id}", response_model=CouponResponse, summary="Update coupon (PATCH alias)")
+async def patch_coupon(
+    coupon_id: uuid.UUID,
+    payload: CouponUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    return await update_coupon(coupon_id, payload, db, admin)
+
+
 @router.delete("/coupons/{coupon_id}", status_code=204, summary="Delete coupon")
 async def delete_coupon(
     coupon_id: uuid.UUID,
@@ -390,9 +585,9 @@ async def delete_coupon(
 
 
 # -------------------------------------------------------------
-# 9. REPORTS
+# 9. REPORTS & AUDIT EXPORTS
 # -------------------------------------------------------------
-@router.get("/reports/{report_type}", summary="Generate Admin Report")
+@router.get("/reports/{report_type}", summary="Generate Admin Report Data")
 async def get_report(
     report_type: str,
     start_date: Optional[datetime] = Query(None),
@@ -401,12 +596,30 @@ async def get_report(
     admin: User = Depends(get_current_admin)
 ):
     service = AdminService(db)
-    rev_data = await service.get_revenue_analytics(start_date=start_date, end_date=end_date)
-    return {
-        "report_type": report_type,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "data": rev_data
-    }
+    return await service.get_report_data(report_type=report_type, start_date=start_date, end_date=end_date)
+
+
+@router.get("/reports/{report_type}/export", summary="Export Real RFC-4180 CSV Report")
+async def export_report_csv(
+    report_type: str,
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    csv_content = await service.export_report_csv(report_type=report_type, start_date=start_date, end_date=end_date)
+    start_str = start_date.strftime("%Y%m%d") if start_date else "all"
+    end_str = end_date.strftime("%Y%m%d") if end_date else "now"
+    filename = f"{report_type}_report_{start_str}_{end_str}.csv"
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        }
+    )
 
 
 # -------------------------------------------------------------
@@ -418,7 +631,18 @@ async def get_restaurant(
     admin: User = Depends(get_current_admin)
 ):
     service = AdminService(db)
-    return await service.get_restaurant_settings()
+    rest = await service.get_restaurant_settings()
+    return rest.to_dict()
+
+
+@router.get("/settings", summary="Get restaurant settings (alias)")
+async def get_settings_alias(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    rest = await service.get_restaurant_settings()
+    return rest.to_dict()
 
 
 @router.put("/restaurant", summary="Update restaurant settings")
@@ -428,7 +652,30 @@ async def update_restaurant(
     admin: User = Depends(get_current_admin)
 ):
     service = AdminService(db)
-    return await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
+    rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
+    return rest.to_dict()
+
+
+@router.put("/settings", summary="Update restaurant settings (alias)")
+async def update_settings_alias(
+    payload: RestaurantSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
+    return rest.to_dict()
+
+
+@router.patch("/settings", summary="Patch restaurant settings (alias)")
+async def patch_settings_alias(
+    payload: RestaurantSettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(get_current_admin)
+):
+    service = AdminService(db)
+    rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
+    return rest.to_dict()
 
 
 # -------------------------------------------------------------
@@ -460,7 +707,7 @@ async def update_profile(
     db.add(admin)
     await db.commit()
     await db.refresh(admin)
-    return admin
+    return UserResponse.model_validate(admin)
 
 
 @router.post("/change-password", summary="Change Admin Password")

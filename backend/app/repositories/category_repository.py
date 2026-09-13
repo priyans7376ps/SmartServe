@@ -10,9 +10,11 @@ class CategoryRepository(BaseRepository[Category]):
         super().__init__(Category, db)
 
     async def get_by_restaurant(
-        self, restaurant_id: uuid.UUID, active_only: bool = True, skip: int = 0, limit: int = 100
+        self, restaurant_id: Optional[uuid.UUID] = None, active_only: bool = True, skip: int = 0, limit: int = 100
     ) -> List[Category]:
-        query = select(Category).filter(Category.restaurant_id == restaurant_id)
+        query = select(Category)
+        if restaurant_id is not None:
+            query = query.filter(Category.restaurant_id == restaurant_id)
         if active_only:
             query = query.filter(Category.is_active == True)
         query = query.order_by(Category.display_order.asc(), Category.name.asc()).offset(skip).limit(limit)

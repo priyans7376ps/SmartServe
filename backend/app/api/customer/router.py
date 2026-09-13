@@ -448,12 +448,17 @@ async def get_order_details(
             {
                 "id": str(i.id),
                 "name": i.item_name,
+                "description": i.item_description,
                 "quantity": i.quantity,
                 "unit_price": i.unit_price,
-                "total_price": i.total_price
+                "add_ons_total": i.add_ons_total,
+                "subtotal": i.subtotal,
+                # total_price is a computed @property; safe to read, must never be written
+                "total_price": i.total_price,
+                "preparation_status": i.preparation_status,
             }
             for i in order.items
-        ]
+        ],
     }
 
 @router.get("/orders/{order_id}/track", response_model=OrderTrackingResponse, summary="Track Order Status Timeline")

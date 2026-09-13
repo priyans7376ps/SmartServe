@@ -129,12 +129,12 @@ class Restaurant(BaseModel):
     )
     
     # Relationships
-    staff = relationship("User", back_populates="restaurant", lazy="selectin")
-    tables = relationship("Table", back_populates="restaurant", lazy="selectin")
-    categories = relationship("Category", back_populates="restaurant", lazy="selectin")
-    menu_items = relationship("MenuItem", back_populates="restaurant", lazy="selectin")
-    orders = relationship("Order", back_populates="restaurant", lazy="selectin")
-    coupons = relationship("Coupon", back_populates="restaurant", lazy="selectin")
+    staff = relationship("User", back_populates="restaurant", lazy="select")
+    tables = relationship("Table", back_populates="restaurant", lazy="select")
+    categories = relationship("Category", back_populates="restaurant", lazy="select")
+    menu_items = relationship("MenuItem", back_populates="restaurant", lazy="select")
+    orders = relationship("Order", back_populates="restaurant", lazy="select")
+    coupons = relationship("Coupon", back_populates="restaurant", lazy="select")
     
     def __repr__(self) -> str:
         return f"<Restaurant {self.name}>"
@@ -155,15 +155,17 @@ class Restaurant(BaseModel):
             "tagline": self.tagline,
             "email": self.email,
             "phone": self.phone,
-            "address": self.full_address,
-            "logo_url": self.logo_url,
-            "banner_url": self.banner_url,
-            "opening_time": str(self.opening_time) if self.opening_time else None,
-            "closing_time": str(self.closing_time) if self.closing_time else None,
+            "address": self.full_address or self.address_line1 or "124 Gourmet Boulevard, Tech Park",
+            "logo_url": self.logo_url or "",
+            "banner_url": self.banner_url or "",
+            "opening_time": str(self.opening_time) if self.opening_time else "10:00",
+            "closing_time": str(self.closing_time) if self.closing_time else "23:00",
             "is_open": self.is_open,
-            "currency": self.currency,
-            "tax_rate": self.tax_rate,
-            "service_charge_rate": self.service_charge_rate,
+            "currency": self.currency or "INR",
+            "tax_rate": self.tax_rate if self.tax_rate is not None else 0.05,
+            "service_charge_rate": self.service_charge_rate or 0.0,
+            "gstin": getattr(self, "gstin", "27AAAAA0000A1Z5") or "27AAAAA0000A1Z5",
+            "timezone": "Asia/Kolkata",
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

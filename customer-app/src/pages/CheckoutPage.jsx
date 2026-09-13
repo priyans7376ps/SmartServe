@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CreditCard, DollarSign, QrCode, CheckCircle2, ShieldCheck, ArrowRight, Utensils, Lock } from 'lucide-react';
@@ -23,41 +23,61 @@ export default function CheckoutPage() {
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '');
   const [errorMessage, setErrorMessage] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [placedOrderInfo, setPlacedOrderInfo] = useState(null);
 
-  if (items.length === 0) {
-    navigate('/cart');
+  // Redirect to cart if there are no items and no active order — must be in useEffect
+  // to avoid "Cannot update a component while rendering a different component" warning.
+  useEffect(() => {
+    if (items.length === 0 && !placedOrderInfo) {
+      navigate('/cart');
+    }
+  }, [items.length, placedOrderInfo, navigate]);
+
+  if (items.length === 0 && !placedOrderInfo) {
     return null;
   }
+
 
   const handlePlaceOrder = async (e) => {
     e.preventDefault();
     setErrorMessage('');
 
     try {
-      const orderPayload = {
-        order_type: 'dine_in',
-        customer_name: customerName || 'Guest Customer',
-        customer_phone: customerPhone || null,
-        customer_email: user?.email || null,
-        notes: location.state?.specialInstructions || null,
-        payment_method: paymentMethod === 'pay_at_table' ? 'cash' : paymentMethod,
-      };
+      let orderId = placedOrderInfo?.orderId;
+      let orderNumber = placedOrderInfo?.orderNumber;
+      let tokenNumber = placedOrderInfo?.tokenNumber;
 
-      const res = await placeOrder(orderPayload);
-      const tokenNumber = res.order_number ? res.order_number.slice(-4) : Math.floor(1000 + Math.random() * 9000);
-      const orderId = res.order_id || res.id;
+      // Only create a new SmartServe order if not already created in this session
+      if (!orderId) {
+        const orderPayload = {
+          order_type: 'dine_in',
+          customer_name: customerName || 'Guest Customer',
+          customer_phone: customerPhone || null,
+          customer_email: user?.email || null,
+          notes: location.state?.specialInstructions || null,
+          payment_method: paymentMethod === 'pay_at_table' ? 'cash' : paymentMethod,
+        };
 
-      // Save order context locally
-      localStorage.setItem('active_order', JSON.stringify({
-        order_id: orderId,
-        order_number: res.order_number,
-        tokenNumber,
-        tableNumber,
-        grandTotal: res.total_amount || totalAmount,
-        itemCount: items.length,
-        paymentMethod,
-        timestamp: new Date().toISOString(),
-      }));
+        const res = await placeOrder(orderPayload);
+        tokenNumber = res.order_number ? res.order_number.slice(-4) : Math.floor(1000 + Math.random() * 9000);
+        orderId = res.order_id || res.id;
+        orderNumber = res.order_number;
+
+        const orderInfo = { orderId, orderNumber, tokenNumber };
+        setPlacedOrderInfo(orderInfo);
+
+        // Save order context locally for recovery
+        localStorage.setItem('active_order', JSON.stringify({
+          order_id: orderId,
+          order_number: orderNumber,
+          tokenNumber,
+          tableNumber,
+          grandTotal: res.total_amount || totalAmount,
+          itemCount: items.length,
+          paymentMethod,
+          timestamp: new Date().toISOString(),
+        }));
+      }
 
       // If Razorpay Online payment is selected
       if (paymentMethod === 'online' || paymentMethod === 'razorpay' || paymentMethod === 'upi') {
@@ -70,16 +90,19 @@ export default function CheckoutPage() {
             return;
           }
 
-          // Create Razorpay order on backend
+          // Create Razorpay order on backend (strictly calculated server-side)
           const rzpOrderData = await paymentApi.createRazorpayOrder(orderId);
           const { razorpay_order_id, amount, currency, razorpay_key_id } = rzpOrderData;
 
+          // Use public Razorpay Key ID (never secret)
+          const clientKeyId = import.meta.env.VITE_RAZORPAY_KEY_ID || razorpay_key_id;
+
           const options = {
-            key: razorpay_key_id,
+            key: clientKeyId,
             amount: amount,
             currency: currency || 'INR',
             name: restaurantName || 'SmartServe Bistro',
-            description: `Order #${res.order_number}`,
+            description: `Order #${orderNumber}`,
             order_id: razorpay_order_id,
             prefill: {
               name: customerName || user?.full_name || '',
@@ -102,10 +125,10 @@ export default function CheckoutPage() {
                 if (verifyRes.success) {
                   navigate(`/order-success?order_id=${orderId}&token=${tokenNumber}`);
                 } else {
-                  setErrorMessage('Payment verification failed on server.');
+                  setErrorMessage('Payment verification failed on server. Please contact restaurant staff.');
                 }
               } catch (verifyErr) {
-                setErrorMessage(verifyErr.response?.data?.detail || 'Server payment verification failed.');
+                setErrorMessage(verifyErr.response?.data?.detail || 'Server payment verification failed. Please contact staff.');
               } finally {
                 setIsProcessingPayment(false);
               }
@@ -113,23 +136,31 @@ export default function CheckoutPage() {
             modal: {
               ondismiss: () => {
                 setIsProcessingPayment(false);
-                setErrorMessage('Payment process dismissed. You can retry payment anytime.');
+                setErrorMessage('Payment was dismissed. You can click below to retry payment anytime.');
               },
             },
           };
 
           const rzp = new window.Razorpay(options);
+
+          // Handle gateway-side payment failure event
+          rzp.on('payment.failed', function (resp) {
+            setIsProcessingPayment(false);
+            const reason = resp.error?.description || resp.error?.reason || 'Transaction failed.';
+            setErrorMessage(`Payment failed: ${reason}. Please try again with a different payment method.`);
+          });
+
           rzp.open();
         } catch (rzpErr) {
           setIsProcessingPayment(false);
-          setErrorMessage(rzpErr.response?.data?.detail || rzpErr.message || 'Razorpay order creation failed.');
+          setErrorMessage(rzpErr.response?.data?.detail || rzpErr.message || 'Razorpay order initiation failed.');
         }
       } else {
         // Pay at table or Cash
         navigate(`/order-success?order_id=${orderId}&token=${tokenNumber}`);
       }
     } catch (err) {
-      setErrorMessage(err.message || 'Failed to place order. Please try again.');
+      setErrorMessage(err.message || 'Failed to process order. Please try again.');
     }
   };
 

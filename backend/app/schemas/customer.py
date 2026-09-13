@@ -85,6 +85,8 @@ class CouponApplyRequest(BaseModel):
     code: str
 
 class CustomerCouponResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     code: str
     description: Optional[str] = None
@@ -93,6 +95,8 @@ class CustomerCouponResponse(BaseModel):
     min_order_amount: Optional[float] = None
     max_discount_amount: Optional[float] = None
     valid_until: Optional[datetime] = None
+    display_name: Optional[str] = None
+    terms_conditions: Optional[str] = None
 
 # -------------------------------------------------------------
 # 5. Checkout & Order Schemas

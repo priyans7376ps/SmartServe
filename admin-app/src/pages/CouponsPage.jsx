@@ -8,6 +8,7 @@ import Modal from '../components/common/Modal';
 import ConfirmationDialog from '../components/common/ConfirmationDialog';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const CouponsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,7 +46,7 @@ export const CouponsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Failed to save coupon.', 'error');
+      addToast(getErrorMessage(err, 'Failed to save coupon.'), 'error');
     }
   });
 
@@ -54,6 +55,9 @@ export const CouponsPage = () => {
     onSuccess: () => {
       addToast('Coupon status toggled.', 'info');
       queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
+    },
+    onError: (err) => {
+      addToast(getErrorMessage(err, 'Failed to toggle coupon status.'), 'error');
     }
   });
 
@@ -63,6 +67,9 @@ export const CouponsPage = () => {
       addToast('Coupon deleted.', 'success');
       setDeletingCoupon(null);
       queryClient.invalidateQueries({ queryKey: ['admin', 'coupons'] });
+    },
+    onError: (err) => {
+      addToast(getErrorMessage(err, 'Failed to delete coupon.'), 'error');
     }
   });
 

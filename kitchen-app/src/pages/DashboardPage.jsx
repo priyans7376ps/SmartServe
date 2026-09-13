@@ -47,8 +47,14 @@ export default function DashboardPage() {
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
       // 1. Status Filter
-      if (statusFilter !== 'all' && ord.status !== statusFilter) {
-        return false;
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'pending') {
+          if (ord.status !== 'pending' && ord.status !== 'confirmed' && ord.status !== 'accepted') {
+            return false;
+          }
+        } else if (ord.status !== statusFilter) {
+          return false;
+        }
       }
 
       // 2. Search Query (Token #, Table #, Customer, Food Name)

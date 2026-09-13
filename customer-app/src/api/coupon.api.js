@@ -1,9 +1,17 @@
 import api from './axios';
 
+const extractCoupons = (data) => {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.coupons)) return data.coupons;
+  return [];
+};
+
 export const couponApi = {
   getCoupons: async () => {
     const res = await api.get('/customer/coupons');
-    return res.data;
+    return extractCoupons(res.data);
   },
 
   applyCoupon: async (code) => {

@@ -79,6 +79,9 @@ async def test_admin_revenue_analytics(client: AsyncClient):
     assert "avg_order_value" in data
 
 
+from unittest.mock import patch
+
+
 @pytest.mark.asyncio
 async def test_razorpay_create_order_and_verify(client: AsyncClient):
     order_id = uuid.uuid4()
@@ -88,6 +91,8 @@ async def test_razorpay_create_order_and_verify(client: AsyncClient):
         order_number="ORD-1001",
         order_type=OrderType.DINE_IN,
         status=OrderStatus.PENDING,
+        payment_method="online",
+        payment_status="pending",
         total_amount=500.0,
         subtotal=450.0,
         tax_amount=25.0,
@@ -98,20 +103,22 @@ async def test_razorpay_create_order_and_verify(client: AsyncClient):
     )
     add_to_session(order)
 
-    # 1. Create Razorpay order
-    resp = await client.post(
-        "/api/v1/payments/create-order",
-        json={"order_id": str(order_id)}
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["amount"] == 50000  # 500 INR in paise
-    assert "razorpay_order_id" in data
+    # 1. Create Razorpay order (mocking external SDK API call)
+    with patch("razorpay.resources.Order.create", return_value={"id": "order_rzp_mock1001"}):
+        resp = await client.post(
+            "/api/v1/payments/create-order",
+            json={"order_id": str(order_id)}
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["amount"] == 50000  # 500 INR in paise, calculated strictly server-side
+        assert data["razorpay_order_id"] == "order_rzp_mock1001"
+        assert data["currency"] == "INR"
 
     rzp_order_id = data["razorpay_order_id"]
     rzp_payment_id = "pay_test_9999"
 
-    # Compute valid HMAC-SHA256 signature
+    # Compute valid HMAC-SHA256 signature using RAZORPAY_KEY_SECRET
     msg = f"{rzp_order_id}|{rzp_payment_id}".encode("utf-8")
     valid_sig = hmac.new(
         settings.RAZORPAY_KEY_SECRET.encode("utf-8"),
@@ -119,7 +126,7 @@ async def test_razorpay_create_order_and_verify(client: AsyncClient):
         hashlib.sha256
     ).hexdigest()
 
-    # 2. Verify signature - invalid signature
+    # 2. Verify signature - invalid signature must be rejected with 400
     bad_resp = await client.post(
         "/api/v1/payments/verify",
         json={
@@ -130,8 +137,9 @@ async def test_razorpay_create_order_and_verify(client: AsyncClient):
         }
     )
     assert bad_resp.status_code == 400
+    assert "invalid signature" in bad_resp.json()["detail"].lower()
 
-    # 3. Verify signature - valid signature
+    # 3. Verify signature - valid signature must succeed with 200
     good_resp = await client.post(
         "/api/v1/payments/verify",
         json={
@@ -145,6 +153,68 @@ async def test_razorpay_create_order_and_verify(client: AsyncClient):
     res_data = good_resp.json()
     assert res_data["success"] is True
     assert res_data["order_status"] == OrderStatus.CONFIRMED.value
+    assert res_data["payment_status"] == "completed"
+
+    # 4. Duplicate verification idempotency - repeating verify call should return success without error
+    dup_resp = await client.post(
+        "/api/v1/payments/verify",
+        json={
+            "order_id": str(order_id),
+            "razorpay_order_id": rzp_order_id,
+            "razorpay_payment_id": rzp_payment_id,
+            "razorpay_signature": valid_sig
+        }
+    )
+    assert dup_resp.status_code == 200
+    assert dup_resp.json()["success"] is True
+
+    # 5. Prevent creating a new Razorpay order for an already-completed order
+    with patch("razorpay.resources.Order.create", return_value={"id": "order_rzp_dup"}):
+        recreate_resp = await client.post(
+            "/api/v1/payments/create-order",
+            json={"order_id": str(order_id)}
+        )
+        assert recreate_resp.status_code == 400
+        assert "already been paid" in recreate_resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_razorpay_order_id_mismatch(client: AsyncClient):
+    order_id = uuid.uuid4()
+    order = Order(
+        id=order_id,
+        restaurant_id=uuid.uuid4(),
+        order_number="ORD-1002",
+        order_type=OrderType.DINE_IN,
+        status=OrderStatus.PENDING,
+        payment_method="online",
+        payment_status="pending",
+        total_amount=250.0,
+        subtotal=230.0,
+        tax_amount=20.0,
+        customer_name="Jane Doe",
+        placed_at=datetime.now(timezone.utc)
+    )
+    add_to_session(order)
+
+    with patch("razorpay.resources.Order.create", return_value={"id": "order_rzp_expected"}):
+        await client.post(
+            "/api/v1/payments/create-order",
+            json={"order_id": str(order_id)}
+        )
+
+    # Submit with mismatched order ID
+    mismatch_resp = await client.post(
+        "/api/v1/payments/verify",
+        json={
+            "order_id": str(order_id),
+            "razorpay_order_id": "order_rzp_wrong",
+            "razorpay_payment_id": "pay_test_0000",
+            "razorpay_signature": "any_signature"
+        }
+    )
+    assert mismatch_resp.status_code == 400
+    assert "mismatch" in mismatch_resp.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

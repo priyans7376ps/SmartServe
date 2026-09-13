@@ -5,10 +5,13 @@ import ExportDialog from '../components/common/ExportDialog';
 import DatePicker from '../components/common/DatePicker';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const ReportsPage = () => {
   const [selectedReport, setSelectedReport] = useState(null);
-  const [dateRange, setDateRange] = useState({ startDate: '2026-08-01', endDate: '2026-08-31' });
+  const today = new Date().toISOString().split('T')[0];
+  const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+  const [dateRange, setDateRange] = useState({ startDate: firstOfMonth, endDate: today });
   const { addToast } = useUIStore();
 
   const reportsList = [
@@ -20,19 +23,12 @@ export const ReportsPage = () => {
   ];
 
   const handleExportCSV = async (rep) => {
+    if (!rep) return;
     try {
-      const data = await adminApi.getReport(rep.id, dateRange.startDate, dateRange.endDate);
-      const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `${rep.id}_report_${dateRange.startDate}_${dateRange.endDate}.json`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      addToast(`${rep.title} exported successfully!`, 'success');
+      await adminApi.downloadReportCSV(rep.id, dateRange.startDate, dateRange.endDate);
+      addToast(`${rep.title} CSV downloaded successfully!`, 'success');
     } catch (err) {
-      addToast(`Failed to export report: ${err.message}`, 'error');
+      addToast(getErrorMessage(err, `Failed to export ${rep.title}`), 'error');
     }
   };
 
@@ -81,7 +77,7 @@ export const ReportsPage = () => {
                   className="py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-xs flex items-center gap-1 transition-all"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  <span>PDF (Placeholder)</span>
+                  <span>Export Options</span>
                 </button>
               </div>
             </div>
@@ -93,6 +89,7 @@ export const ReportsPage = () => {
         isOpen={!!selectedReport}
         onClose={() => setSelectedReport(null)}
         title={`Export ${selectedReport?.title}`}
+        onExportCSV={() => handleExportCSV(selectedReport)}
       />
     </div>
   );

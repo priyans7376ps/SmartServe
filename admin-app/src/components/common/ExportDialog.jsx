@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Modal from './Modal';
-import { Download, FileText, Table as TableIcon } from 'lucide-react';
+import { Download, FileText, Table as TableIcon, Printer } from 'lucide-react';
 import { useUIStore } from '../../store/useUIStore';
 
 export const ExportDialog = ({ isOpen, onClose, title = 'Export Data', onExportCSV }) => {
@@ -8,18 +8,22 @@ export const ExportDialog = ({ isOpen, onClose, title = 'Export Data', onExportC
   const [isExporting, setIsExporting] = useState(false);
   const { addToast } = useUIStore();
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setIsExporting(true);
-    setTimeout(() => {
+    try {
       if (format === 'csv') {
-        if (onExportCSV) onExportCSV();
+        if (onExportCSV) await onExportCSV();
         else addToast('CSV Export generated successfully.', 'success');
       } else {
-        addToast('PDF Export feature placeholder triggered.', 'info');
+        window.print();
+        addToast('Document sent to print/PDF output.', 'info');
       }
+    } catch (e) {
+      // Handled in callback
+    } finally {
       setIsExporting(false);
       onClose();
-    }, 600);
+    }
   };
 
   return (
@@ -52,8 +56,8 @@ export const ExportDialog = ({ isOpen, onClose, title = 'Export Data', onExportC
                 : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
           >
-            <FileText className="w-6 h-6" />
-            <span className="text-xs font-semibold">PDF Document (Placeholder)</span>
+            <Printer className="w-6 h-6" />
+            <span className="text-xs font-semibold">Print / Save PDF</span>
           </button>
         </div>
 
@@ -72,7 +76,7 @@ export const ExportDialog = ({ isOpen, onClose, title = 'Export Data', onExportC
             className="px-5 py-2 rounded-xl text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 shadow-md shadow-amber-500/20 flex items-center gap-1.5 transition-all"
           >
             <Download className="w-4 h-4" />
-            {isExporting ? 'Exporting...' : 'Download File'}
+            {isExporting ? 'Exporting...' : (format === 'csv' ? 'Download CSV' : 'Print / Export')}
           </button>
         </div>
       </div>

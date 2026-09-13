@@ -214,7 +214,8 @@ async def create_kitchen_menu_item(
     service = MenuService(db)
     return await service.create_menu_item(data)
 
-@router.patch("/menu/{item_id}", response_model=MenuItemResponse, summary="Update Menu Item")
+@router.put("/menu/{item_id}", response_model=MenuItemResponse, summary="Update Menu Item (PUT)")
+@router.patch("/menu/{item_id}", response_model=MenuItemResponse, summary="Update Menu Item (PATCH)")
 async def update_kitchen_menu_item(
     item_id: uuid.UUID,
     data: MenuItemUpdate,
@@ -232,6 +233,17 @@ async def delete_kitchen_menu_item(
 ):
     service = MenuService(db)
     return await service.delete_menu_item(item_id)
+ 
+@router.get("/categories", response_model=List[CategoryResponse], summary="List Categories")
+async def list_kitchen_categories(
+    restaurant_id: Optional[uuid.UUID] = Query(None, description="Restaurant UUID"),
+    active_only: bool = Query(True, description="Filter active categories"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    db: AsyncSession = Depends(get_db)
+):
+    service = CategoryService(db)
+    return await service.list_categories(restaurant_id, active_only=active_only, skip=skip, limit=limit)
 
 @router.post("/categories", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED, summary="Create Category")
 async def create_kitchen_category(

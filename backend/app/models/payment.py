@@ -166,6 +166,11 @@ class Payment(BaseModel):
     def remaining_amount(self) -> float:
         """Calculate remaining amount after refunds."""
         return self.total_amount - self.refund_amount
+
+    @property
+    def order_number(self) -> Optional[str]:
+        """Order number from related order."""
+        return self.order.order_number if self.order else None
     
     def to_dict(self) -> dict:
         """Convert payment to dictionary."""

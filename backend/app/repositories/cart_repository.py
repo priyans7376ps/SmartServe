@@ -47,22 +47,38 @@ class CartRepository(BaseRepository[Cart]):
             except ValueError:
                 pass
 
-        stmt = select(Cart).where(
-            and_(
-                Cart.user_id == user_id,
-                Cart.is_active.isnot(False),
-                Cart.is_converted.isnot(True)
+        from sqlalchemy.orm import selectinload
+        stmt = (
+            select(Cart)
+            .options(
+                selectinload(Cart.items).selectinload(CartItem.menu_item),
+                selectinload(Cart.coupon),
+            )
+            .where(
+                and_(
+                    Cart.user_id == user_id,
+                    Cart.is_active.isnot(False),
+                    Cart.is_converted.isnot(True)
+                )
             )
         )
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def get_active_cart_by_session(self, session_id: str) -> Optional[Cart]:
-        stmt = select(Cart).where(
-            and_(
-                Cart.session_id == session_id,
-                Cart.is_active.isnot(False),
-                Cart.is_converted.isnot(True)
+        from sqlalchemy.orm import selectinload
+        stmt = (
+            select(Cart)
+            .options(
+                selectinload(Cart.items).selectinload(CartItem.menu_item),
+                selectinload(Cart.coupon),
+            )
+            .where(
+                and_(
+                    Cart.session_id == session_id,
+                    Cart.is_active.isnot(False),
+                    Cart.is_converted.isnot(True)
+                )
             )
         )
         result = await self.db.execute(stmt)

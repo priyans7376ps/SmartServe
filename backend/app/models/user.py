@@ -82,18 +82,18 @@ class User(BaseModel):
     device_type: Mapped[Optional[str]] = Column(String(50), nullable=True)
 
     # Relationships
-    orders = relationship("Order", back_populates="user", lazy="selectin")
-    cart = relationship("Cart", back_populates="user", uselist=False, lazy="selectin")
-    payments = relationship("Payment", back_populates="user", lazy="selectin")
-    complaints = relationship("Complaint", foreign_keys="Complaint.user_id", back_populates="user", lazy="selectin")
-    notifications = relationship("Notification", back_populates="user", lazy="selectin")
-    loyalty_points = relationship("LoyaltyPoints", back_populates="user", uselist=False, lazy="selectin")
-    coupon_usages = relationship("CouponUsage", back_populates="user", lazy="selectin")
+    orders = relationship("Order", back_populates="user", lazy="select")
+    cart = relationship("Cart", back_populates="user", uselist=False, lazy="select")
+    payments = relationship("Payment", back_populates="user", lazy="select")
+    complaints = relationship("Complaint", foreign_keys="Complaint.user_id", back_populates="user", lazy="select")
+    notifications = relationship("Notification", back_populates="user", lazy="select")
+    loyalty_points = relationship("LoyaltyPoints", back_populates="user", uselist=False, lazy="select")
+    coupon_usages = relationship("CouponUsage", back_populates="user", lazy="select")
 
     restaurant_id: Mapped[Optional[uuid.UUID]] = Column(
         UUID(as_uuid=True), ForeignKey("restaurants.id"), nullable=True
     )
-    restaurant = relationship("Restaurant", back_populates="staff", lazy="selectin")
+    restaurant = relationship("Restaurant", back_populates="staff", lazy="select")
 
     def __repr__(self) -> str:
         return f"<User {self.email} ({self.role.value})>"

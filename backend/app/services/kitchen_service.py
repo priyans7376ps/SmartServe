@@ -6,6 +6,7 @@ from sqlalchemy import select, and_, or_, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order import Order, OrderStatus
+from app.models.order_item import OrderItem
 from app.models.order_status_log import OrderStatusLog
 from app.models.user import User
 from app.repositories.order_repository import OrderRepository
@@ -137,19 +138,53 @@ class KitchenService:
         else:
             priority = "low"
 
-        table_num = str(o.table.table_number) if o.table else "N/A"
-        token_num = f"TKN-{o.order_number[-4:]}"
+        table_num = str(o.table.table_number) if (o.table and o.table.table_number is not None) else "N/A"
+        token_num = f"TKN-{o.order_number[-4:]}" if o.order_number else "TKN-0000"
+
+        # Normalized separate payment_status and payment_method
+        raw_pay_status = str(o.payment_status or "pending").lower().strip()
+        if raw_pay_status in ["completed", "paid", "successful", "success"]:
+            pay_status = "paid"
+        elif raw_pay_status in ["failed", "failure"]:
+            pay_status = "failed"
+        elif raw_pay_status in ["refunded"]:
+            pay_status = "refunded"
+        elif raw_pay_status in ["partially_refunded"]:
+            pay_status = "partially_refunded"
+        else:
+            pay_status = "pending"
+
+        raw_pay_method = str(o.payment_method or "cash").lower().strip()
+        if raw_pay_method in ["online", "razorpay"]:
+            pay_method = "razorpay"
+        elif raw_pay_method in ["cash", "pay_at_table", "table"]:
+            pay_method = "cash"
+        elif raw_pay_method in ["upi"]:
+            pay_method = "upi"
+        elif raw_pay_method in ["card"]:
+            pay_method = "card"
+        else:
+            pay_method = raw_pay_method
 
         items_list = []
         for item in (o.items or []):
+            item_price = float(item.unit_price) if item.unit_price is not None else 0.0
+            item_sub = float(item.subtotal) if item.subtotal is not None else round(item_price * item.quantity, 2)
+            menu_it = getattr(item, "menu_item", None)
             items_list.append({
                 "id": str(item.id),
                 "name": item.item_name,
+                "price": item_price,
+                "unit_price": item_price,
+                "subtotal": item_sub,
+                "total_price": item.total_price,
                 "quantity": item.quantity,
                 "notes": item.notes,
                 "variant": item.variant_selected,
                 "add_ons": item.add_ons_selected,
-                "status": getattr(item, "status", "pending")
+                "status": item.preparation_status or getattr(item, "status", "pending"),
+                "is_veg": getattr(menu_it, "is_veg", True) if menu_it else True,
+                "image_url": getattr(menu_it, "image_url", None) if menu_it else None,
             })
 
         return {
@@ -160,8 +195,8 @@ class KitchenService:
             "customer_name": o.customer_name or "Guest Diner",
             "customer_type": "registered" if o.user_id else "guest",
             "status": o.status.value,
-            "payment_status": o.payment_status,
-            "payment_method": o.payment_method,
+            "payment_status": pay_status,
+            "payment_method": pay_method,
             "placed_at": o.placed_at,
             "estimated_time_mins": o.estimated_preparation_time or 20,
             "waiting_time_mins": wait_mins,
@@ -192,7 +227,14 @@ class KitchenService:
         page_size: int = 50
     ) -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
-        stmt = select(Order)
+        from sqlalchemy.orm import selectinload
+        stmt = (
+            select(Order)
+            .options(
+                selectinload(Order.table),
+                selectinload(Order.items).selectinload(OrderItem.menu_item),
+            )
+        )
 
         if restaurant_id:
             stmt = stmt.where(Order.restaurant_id == restaurant_id)
@@ -200,8 +242,10 @@ class KitchenService:
         if status_filter:
             if status_filter == "active":
                 stmt = stmt.where(Order.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY]))
-            elif status_filter == "accepted":
+            elif status_filter in ["accepted", "confirmed"]:
                 stmt = stmt.where(Order.status == OrderStatus.CONFIRMED)
+            elif status_filter == "pending":
+                stmt = stmt.where(Order.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED]))
             else:
                 try:
                     target_st = OrderStatus(status_filter)

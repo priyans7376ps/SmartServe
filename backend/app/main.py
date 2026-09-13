@@ -41,6 +41,12 @@ setup_security_middleware(app)
 # Include API v1 Router
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
+# Static file uploads
+import os
+from fastapi.staticfiles import StaticFiles
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+
 
 from app.database.connection import engine, async_session_factory
 from app.seed import seed_menu_data
@@ -91,9 +97,10 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    from fastapi.encoders import jsonable_encoder
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": exc.errors(), "message": "Validation Error"}
+        content={"detail": jsonable_encoder(exc.errors()), "message": "Validation Error"}
     )
 
 @app.exception_handler(Exception)

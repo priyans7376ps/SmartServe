@@ -20,7 +20,7 @@ export const AnalyticsPage = () => {
 
   const { data: analytics, isLoading } = useQuery({
     queryKey: ['admin', 'analytics', 'revenue', timeframe],
-    queryFn: () => adminApi.getRevenueAnalytics(),
+    queryFn: () => adminApi.getRevenueAnalytics(timeframe),
   });
 
   const series = analytics?.series || [];

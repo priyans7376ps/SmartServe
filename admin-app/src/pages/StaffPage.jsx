@@ -8,6 +8,7 @@ import Modal from '../components/common/Modal';
 import ConfirmationDialog from '../components/common/ConfirmationDialog';
 import { useUIStore } from '../store/useUIStore';
 import adminApi from '../api/adminApi';
+import { getErrorMessage } from '../utils/error';
 
 export const StaffPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,7 +52,7 @@ export const StaffPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'staff'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Failed to save staff details.', 'error');
+      addToast(getErrorMessage(err, 'Failed to save staff details.'), 'error');
     }
   });
 
@@ -63,7 +64,7 @@ export const StaffPage = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'staff'] });
     },
     onError: (err) => {
-      addToast(err.response?.data?.detail || 'Action failed.', 'error');
+      addToast(getErrorMessage(err, 'Action failed.'), 'error');
     }
   });
 

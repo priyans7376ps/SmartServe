@@ -1,7 +1,8 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import select, and_, or_, desc
+from sqlalchemy import select, and_, or_, desc, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.order import Order, OrderStatus, OrderType
 from app.models.order_item import OrderItem
@@ -18,9 +19,83 @@ class OrderRepository(BaseRepository[Order]):
         return f"ORD-{timestamp}-{short_id}"
 
     async def get_by_order_number(self, order_number: str) -> Optional[Order]:
-        stmt = select(Order).where(Order.order_number == order_number)
+        stmt = (
+            select(Order)
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.menu_item),
+                selectinload(Order.table),
+                selectinload(Order.restaurant),
+                selectinload(Order.status_logs),
+                selectinload(Order.coupon),
+            )
+            .where(Order.order_number == order_number)
+        )
         res = await self.db.execute(stmt)
         return res.scalars().first()
+
+    async def search_orders(
+        self,
+        query: Optional[str] = None,
+        status: Optional[str] = None,
+        payment_status: Optional[str] = None,
+        payment_method: Optional[str] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        order_type: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 50
+    ) -> Tuple[List[Order], int]:
+        stmt = (
+            select(Order)
+            .options(
+                selectinload(Order.items).selectinload(OrderItem.menu_item),
+                selectinload(Order.table),
+                selectinload(Order.user),
+            )
+        )
+
+        if status and status != "all":
+            try:
+                st_enum = OrderStatus(status)
+                stmt = stmt.where(Order.status == st_enum)
+            except Exception:
+                stmt = stmt.where(Order.status == status)
+
+        if payment_status and payment_status != "all":
+            stmt = stmt.where(Order.payment_status == payment_status)
+
+        if payment_method and payment_method != "all":
+            stmt = stmt.where(Order.payment_method == payment_method)
+
+        if order_type and order_type != "all":
+            try:
+                ot_enum = OrderType(order_type)
+                stmt = stmt.where(Order.order_type == ot_enum)
+            except Exception:
+                stmt = stmt.where(Order.order_type == order_type)
+
+        if date_from:
+            stmt = stmt.where(Order.placed_at >= date_from)
+        if date_to:
+            stmt = stmt.where(Order.placed_at <= date_to)
+
+        if query:
+            q = f"%{query}%"
+            stmt = stmt.where(
+                or_(
+                    Order.order_number.ilike(q),
+                    Order.customer_name.ilike(q),
+                    Order.customer_phone.ilike(q),
+                    Order.customer_email.ilike(q),
+                )
+            )
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar() or 0
+
+        stmt = stmt.order_by(desc(Order.placed_at)).offset(skip).limit(limit)
+        res = await self.db.execute(stmt)
+        return list(res.scalars().all()), total
 
     async def get_customer_orders(
         self,
@@ -85,6 +160,8 @@ class OrderRepository(BaseRepository[Order]):
                 order_data["order_number"] = await self.generate_order_number()
             if "id" not in order_data:
                 order_data["id"] = uuid.uuid4()
+            if "status" not in order_data or not order_data["status"]:
+                order_data["status"] = OrderStatus.PENDING
 
             order = Order(**order_data)
             self.db.add(order)
@@ -98,18 +175,32 @@ class OrderRepository(BaseRepository[Order]):
                 elif "status" in item_dict:
                     item_dict.pop("status")
 
+                if "unit_price" not in item_dict and "price" in item_dict:
+                    item_dict["unit_price"] = item_dict.pop("price")
+                else:
+                    item_dict.pop("price", None)
+
                 if "id" not in item_dict:
                     item_dict["id"] = uuid.uuid4()
                 item_dict["order_id"] = order.id
 
                 # Calculate subtotal if missing: (unit_price + add_ons_total) * quantity
-                if "subtotal" not in item_dict:
+                if "subtotal" not in item_dict or item_dict["subtotal"] is None:
                     u_price = float(item_dict.get("unit_price", 0.0))
                     a_total = float(item_dict.get("add_ons_total", 0.0))
                     qty = int(item_dict.get("quantity", 1))
-                    item_dict["subtotal"] = round((u_price + a_total) * qty, 2)
+                    item_dict["subtotal"] = round((u_price + a_total) * max(1, qty), 2)
 
-                order_item = OrderItem(**item_dict)
+                valid_keys = {
+                    "id", "order_id", "menu_item_id", "item_name", "item_description",
+                    "quantity", "unit_price", "compare_price", "subtotal", "notes",
+                    "variant_selected", "add_ons_selected", "add_ons_total",
+                    "preparation_status", "preparation_started_at", "preparation_completed_at",
+                    "preparation_notes", "assigned_to", "created_at", "updated_at"
+                }
+                filtered_item_dict = {k: v for k, v in item_dict.items() if k in valid_keys}
+
+                order_item = OrderItem(**filtered_item_dict)
                 self.db.add(order_item)
 
             # Status Log
@@ -122,8 +213,8 @@ class OrderRepository(BaseRepository[Order]):
             self.db.add(log)
 
             await self.db.commit()
-            await self.db.refresh(order)
-            return order
+            full_order = await self.get_by_id(order.id)
+            return full_order or order
         except Exception:
             await self.db.rollback()
             raise

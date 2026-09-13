@@ -65,8 +65,12 @@ export const Table = ({
                   }`}
                 >
                   {columns.map((col, colIdx) => (
-                    <td key={col.key || colIdx} className={`py-4 px-4 text-slate-700 dark:text-slate-200 ${col.cellClassName || ''}`}>
-                      {col.render ? col.render(row[col.key], row, rowIdx) : row[col.key]}
+                    <td key={col.key || col.header || colIdx} className={`py-4 px-4 text-slate-700 dark:text-slate-200 ${col.cellClassName || ''}`}>
+                      {col.render
+                        ? col.render(col.key ? row[col.key] : row, row, rowIdx)
+                        : col.accessor
+                          ? (typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor])
+                          : (col.key ? row[col.key] : null)}
                     </td>
                   ))}
                 </tr>

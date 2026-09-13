@@ -7,7 +7,7 @@ export default function KitchenStatsCard() {
   const { orders, statusFilter, setStatusFilter } = useKitchenOrderStore();
 
   const totalCount = orders.length;
-  const pendingCount = orders.filter((o) => o.status === 'pending').length;
+  const pendingCount = orders.filter((o) => o.status === 'pending' || o.status === 'confirmed' || o.status === 'accepted').length;
   const preparingCount = orders.filter((o) => o.status === 'preparing').length;
   const readyCount = orders.filter((o) => o.status === 'ready').length;
   const completedCount = orders.filter((o) => o.status === 'completed').length;

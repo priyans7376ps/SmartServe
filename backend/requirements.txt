@@ -50,3 +50,6 @@ httpx==0.26.0
 # Logging
 loguru==0.7.2
 
+# Payment Gateway
+razorpay>=2.0.1
+

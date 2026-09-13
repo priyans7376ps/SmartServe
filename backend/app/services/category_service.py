@@ -51,6 +51,13 @@ class CategoryService:
     async def list_categories(
         self, restaurant_id: Optional[uuid.UUID] = None, active_only: bool = True, skip: int = 0, limit: int = 100
     ) -> List[CategoryResponse]:
+        if not restaurant_id:
+            from app.repositories.restaurant_repository import RestaurantRepository
+            rest_repo = RestaurantRepository(self.db)
+            rests = await rest_repo.get_all(limit=1)
+            if rests:
+                restaurant_id = rests[0].id
+
         categories = await self.repo.get_by_restaurant(restaurant_id, active_only=active_only, skip=skip, limit=limit)
         return [CategoryResponse.model_validate(c) for c in categories]
 

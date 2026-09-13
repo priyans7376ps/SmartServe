@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, Edit3, Trash2, Flame, Sparkles, Star, Clock, Check, X, UtensilsCrossed } from 'lucide-react';
 import api from '../api/axios';
+import { categoryApi } from '../api/category.api';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import MenuItemModal from '../components/ui/MenuItemModal';
@@ -19,11 +20,11 @@ export default function MenuManagementPage() {
   const fetchMenuData = async () => {
     setIsLoading(true);
     try {
-      const [catRes, menuRes] = await Promise.all([
-        api.get('/categories/'),
+      const [cats, menuRes] = await Promise.all([
+        categoryApi.getCategories(),
         api.get('/menu/?limit=100'),
       ]);
-      setCategories(catRes.data || []);
+      setCategories(cats || []);
       setItems(menuRes.data?.items || menuRes.data || []);
     } catch (err) {
       console.error('Failed to load menu data:', err);

@@ -23,9 +23,14 @@ export const adminApi = {
     return res.data;
   },
 
+  getDashboardOverview: async () => {
+    const res = await api.get('/admin/dashboard');
+    return res.data;
+  },
+
   // Revenue Analytics
-  getRevenueAnalytics: async (startDate, endDate) => {
-    const params = {};
+  getRevenueAnalytics: async (timeframe = 'daily', startDate, endDate) => {
+    const params = { timeframe };
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
     const res = await api.get('/admin/analytics/revenue', { params });
@@ -33,11 +38,34 @@ export const adminApi = {
   },
 
   // Orders Management
-  getOrders: async ({ query, status, skip = 0, limit = 50 } = {}) => {
+  getOrders: async ({
+    query,
+    status,
+    paymentStatus,
+    paymentMethod,
+    dateFrom,
+    dateTo,
+    skip = 0,
+    limit = 50,
+  } = {}) => {
     const params = { skip, limit };
     if (query) params.query = query;
     if (status && status !== 'all') params.status = status;
+    if (paymentStatus && paymentStatus !== 'all') params.payment_status = paymentStatus;
+    if (paymentMethod && paymentMethod !== 'all') params.payment_method = paymentMethod;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
     const res = await api.get('/admin/orders', { params });
+    return res.data;
+  },
+
+  getOrder: async (orderId) => {
+    const res = await api.get(`/admin/orders/${orderId}`);
+    return res.data;
+  },
+
+  updateOrderStatus: async (orderId, statusData) => {
+    const res = await api.patch(`/admin/orders/${orderId}/status`, statusData);
     return res.data;
   },
 
@@ -69,12 +97,22 @@ export const adminApi = {
     return res.data;
   },
 
+  getCustomer: async (customerId) => {
+    const res = await api.get(`/admin/customers/${customerId}`);
+    return res.data;
+  },
+
   // Staff Management
   getStaff: async ({ query, role, skip = 0, limit = 50 } = {}) => {
     const params = { skip, limit };
     if (query) params.query = query;
     if (role && role !== 'all') params.role = role;
     const res = await api.get('/admin/staff', { params });
+    return res.data;
+  },
+
+  getStaffMember: async (staffId) => {
+    const res = await api.get(`/admin/staff/${staffId}`);
     return res.data;
   },
 
@@ -98,6 +136,11 @@ export const adminApi = {
     return res.data;
   },
 
+  getComplaint: async (complaintId) => {
+    const res = await api.get(`/admin/complaints/${complaintId}`);
+    return res.data;
+  },
+
   updateComplaint: async (complaintId, updateData) => {
     const res = await api.patch(`/admin/complaints/${complaintId}`, updateData);
     return res.data;
@@ -106,6 +149,11 @@ export const adminApi = {
   // Coupons Management
   getCoupons: async () => {
     const res = await api.get('/admin/coupons');
+    return res.data;
+  },
+
+  getCoupon: async (couponId) => {
+    const res = await api.get(`/admin/coupons/${couponId}`);
     return res.data;
   },
 
@@ -131,6 +179,28 @@ export const adminApi = {
     if (endDate) params.end_date = endDate;
     const res = await api.get(`/admin/reports/${reportType}`, { params });
     return res.data;
+  },
+
+  downloadReportCSV: async (reportType, startDate, endDate) => {
+    const params = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    const res = await api.get(`/admin/reports/${reportType}/export`, {
+      params,
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = `${reportType}_report_${startDate || 'all'}_${endDate || 'all'}.csv`;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    return true;
   },
 
   // Restaurant Settings

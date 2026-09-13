@@ -42,12 +42,34 @@ class PaymentRepository(BaseRepository[Payment]):
         skip: int = 0,
         limit: int = 50
     ) -> Tuple[List[Payment], int]:
-        stmt = select(Payment)
+        from app.models.order import Order
+        from sqlalchemy.orm import selectinload
 
-        if status:
-            stmt = stmt.where(Payment.payment_status == status)
-        if method:
-            stmt = stmt.where(Payment.payment_method == method)
+        stmt = select(Payment).outerjoin(Order, Payment.order_id == Order.id).options(selectinload(Payment.order))
+
+        if status and status != "all":
+            # Support both PaymentStatus enum string and normalized aliases
+            norm_status = status.lower()
+            if norm_status in ["paid", "completed"]:
+                stmt = stmt.where(or_(Payment.payment_status == PaymentStatus.COMPLETED, Payment.payment_status == "paid"))
+            else:
+                try:
+                    st_enum = PaymentStatus(norm_status)
+                    stmt = stmt.where(Payment.payment_status == st_enum)
+                except Exception:
+                    stmt = stmt.where(Payment.payment_status == status)
+
+        if method and method != "all":
+            norm_method = method.lower()
+            if norm_method in ["razorpay", "online"]:
+                stmt = stmt.where(or_(Payment.payment_method == PaymentMethod.ONLINE, Payment.payment_method == "razorpay"))
+            else:
+                try:
+                    m_enum = PaymentMethod(norm_method)
+                    stmt = stmt.where(Payment.payment_method == m_enum)
+                except Exception:
+                    stmt = stmt.where(Payment.payment_method == method)
+
         if start_date:
             stmt = stmt.where(Payment.created_at >= start_date)
         if end_date:
@@ -61,7 +83,8 @@ class PaymentRepository(BaseRepository[Payment]):
                     Payment.provider_order_id.ilike(q),
                     Payment.provider_payment_id.ilike(q),
                     Payment.billing_name.ilike(q),
-                    Payment.billing_email.ilike(q)
+                    Payment.billing_email.ilike(q),
+                    Order.order_number.ilike(q),
                 )
             )
 

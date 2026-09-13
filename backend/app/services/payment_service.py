@@ -33,10 +33,23 @@ class PaymentService:
         self, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str
     ) -> bool:
         """
-        Verify Razorpay HMAC-SHA256 signature server-side.
+        Verify Razorpay HMAC-SHA256 signature server-side using RAZORPAY_KEY_SECRET.
         """
+        if not razorpay_order_id or not razorpay_payment_id or not razorpay_signature:
+            return False
+
+        # 1. Direct HMAC-SHA256 verification using RAZORPAY_KEY_SECRET
+        msg = f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8")
+        generated = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode("utf-8"),
+            msg,
+            hashlib.sha256
+        ).hexdigest()
+        if hmac.compare_digest(generated, razorpay_signature):
+            return True
+
+        # 2. Secondary SDK utility check
         try:
-            # First try SDK verification
             self.razorpay_client.utility.verify_payment_signature({
                 'razorpay_order_id': razorpay_order_id,
                 'razorpay_payment_id': razorpay_payment_id,
@@ -44,14 +57,7 @@ class PaymentService:
             })
             return True
         except Exception:
-            # Fallback to direct hmac sha256 check
-            msg = f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8")
-            generated = hmac.new(
-                settings.RAZORPAY_KEY_SECRET.encode("utf-8"),
-                msg,
-                hashlib.sha256
-            ).hexdigest()
-            return hmac.compare_digest(generated, razorpay_signature)
+            return False
 
     def verify_webhook_signature(self, body_bytes: bytes, signature: str) -> bool:
         """
@@ -76,8 +82,8 @@ class PaymentService:
         self, order_id: uuid.UUID, user: Optional[User] = None
     ) -> Dict[str, Any]:
         """
-        Calculates authoritative amount server-side, creates Razorpay Order,
-        and saves Payment record.
+        Calculates authoritative amount server-side, validates order state,
+        creates Razorpay Order, and saves Payment record.
         """
         order = await self.order_repo.get_by_id(order_id)
         if not order:
@@ -86,7 +92,24 @@ class PaymentService:
                 detail="Order not found."
             )
 
-        # Validate order total amount server side
+        # Prevent duplicate payment on already-completed orders
+        if order.payment_status in ["completed", "paid"] or order.status in [
+            OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.COMPLETED
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Order has already been paid and confirmed."
+            )
+
+        # Check existing payment record - if already completed, prevent re-creation
+        existing_payment = await self.payment_repo.get_by_order_id(order.id)
+        if existing_payment and existing_payment.payment_status == PaymentStatus.COMPLETED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Payment has already been completed for this order."
+            )
+
+        # Validate order total amount strictly server-side (never trust frontend input)
         authoritative_total = round(order.total_amount, 2)
         amount_in_paise = int(round(authoritative_total * 100))
 
@@ -96,27 +119,31 @@ class PaymentService:
                 detail="Invalid order total amount for online payment."
             )
 
-        # Create order in Razorpay API
-        razorpay_order_id = f"order_rzp_{uuid.uuid4().hex[:14]}"
+        # Create order in Razorpay Test Mode via SDK
         try:
             rzp_order = self.razorpay_client.order.create({
                 "amount": amount_in_paise,
                 "currency": settings.CURRENCY,
-                "receipt": f"receipt_{order.order_number}",
+                "receipt": f"rcpt_{str(order.order_number)[:30]}",
                 "notes": {
                     "smartserve_order_id": str(order.id),
                     "order_number": order.order_number,
                 }
             })
-            if rzp_order and "id" in rzp_order:
-                razorpay_order_id = rzp_order["id"]
+            if not rzp_order or "id" not in rzp_order:
+                raise ValueError("Missing 'id' in Razorpay API response")
+            razorpay_order_id = rzp_order["id"]
         except Exception as e:
-            logger.warning(f"Razorpay API call exception, using generated order ID: {e}")
+            logger.error(f"Razorpay order creation failed for order {order.order_number}: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to create Razorpay payment order: {str(e)}"
+            )
 
-        # Check existing payment or create new
-        existing_payment = await self.payment_repo.get_by_order_id(order.id)
+        # Update or create pending Payment record
         if existing_payment:
             payment = existing_payment
+            payment.provider = "razorpay"
             payment.provider_order_id = razorpay_order_id
             payment.amount = authoritative_total
             payment.total_amount = authoritative_total
@@ -143,6 +170,10 @@ class PaymentService:
                 "billing_phone": order.customer_phone or (user.phone if user else None),
             })
 
+        logger.info(
+            f"Razorpay order {razorpay_order_id} created for SmartServe order {order.order_number} (Amount: ₹{authoritative_total})"
+        )
+
         return {
             "razorpay_order_id": razorpay_order_id,
             "amount": amount_in_paise,
@@ -161,8 +192,16 @@ class PaymentService:
         admin_user: Optional[User] = None
     ) -> Dict[str, Any]:
         """
-        Verify payment signature and update Order & Payment atomically.
+        Verify payment signature using RAZORPAY_KEY_SECRET,
+        atomically update Payment and Order, and notify Kitchen.
         """
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Order not found."
+            )
+
         payment = await self.payment_repo.get_by_order_id(order_id)
         if not payment:
             raise HTTPException(
@@ -170,17 +209,25 @@ class PaymentService:
                 detail="Payment record for order not found."
             )
 
+        # Idempotency check: if already completed, return existing success state cleanly
         if payment.payment_status == PaymentStatus.COMPLETED:
             return {
                 "success": True,
                 "message": "Payment already confirmed.",
                 "order_id": order_id,
                 "payment_id": payment.id,
-                "order_status": OrderStatus.CONFIRMED.value,
+                "order_status": order.status.value,
                 "payment_status": PaymentStatus.COMPLETED.value
             }
 
-        # Verify signature
+        # Validate that razorpay_order_id matches the expected provider_order_id
+        if payment.provider_order_id and payment.provider_order_id != razorpay_order_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Razorpay order ID mismatch with payment record."
+            )
+
+        # Cryptographically verify signature server-side
         is_valid = self.verify_signature(
             razorpay_order_id, razorpay_payment_id, razorpay_signature
         )
@@ -188,16 +235,19 @@ class PaymentService:
         if not is_valid:
             payment.payment_status = PaymentStatus.FAILED
             payment.failure_reason = "Invalid Razorpay payment signature."
+            payment.provider_payment_id = razorpay_payment_id
+            payment.provider_signature = razorpay_signature
             self.db.add(payment)
             await self.db.commit()
 
+            logger.warning(f"Payment signature verification FAILED for order {order_id}.")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Payment verification failed due to invalid signature."
             )
 
-        now = datetime.now(timezone.utc)
         # Signature is valid -> Atomically confirm payment and order
+        now = datetime.now(timezone.utc)
         payment.provider_payment_id = razorpay_payment_id
         payment.provider_signature = razorpay_signature
         payment.transaction_id = razorpay_payment_id
@@ -206,18 +256,36 @@ class PaymentService:
         payment.verified_at = now
         self.db.add(payment)
 
-        # Update order status
-        order = await self.order_repo.get_by_id(order_id)
-        if order:
-            order.status = OrderStatus.CONFIRMED
-            order.payment_status = "completed"
-            order.confirmed_at = now
-            self.db.add(order)
+        # Update order status to CONFIRMED and payment_status to paid
+        order.status = OrderStatus.CONFIRMED
+        order.payment_status = "paid"
+        order.payment_method = "razorpay"
+        order.confirmed_at = now
+        self.db.add(order)
 
         await self.db.commit()
         await self.db.refresh(payment)
+        await self.db.refresh(order)
 
-        # Audit log
+        # Transmit order to Kitchen Display in real-time via WebSocket
+        try:
+            from app.core.websocket import manager, WSEventType, create_ws_message
+            from app.services.kitchen_service import KitchenService
+            kitchen_svc = KitchenService(self.db)
+            formatted_order = kitchen_svc.format_single_order(order)
+            kitchen_msg = create_ws_message(
+                WSEventType.NEW_ORDER,
+                {
+                    "order": formatted_order,
+                    "message": f"New confirmed table order #{order.order_number} received!"
+                }
+            )
+            await manager.broadcast_to_role("kitchen", kitchen_msg)
+            await manager.broadcast_to_room("kitchen", kitchen_msg)
+        except Exception as ws_err:
+            logger.warning(f"WebSocket kitchen broadcast deferred: {ws_err}")
+
+        # Audit log (sanitized, no secrets)
         await self.audit_repo.log_action(
             admin_id=admin_user.id if admin_user else None,
             action="PAYMENT_VERIFIED",
@@ -229,6 +297,10 @@ class PaymentService:
                 "razorpay_payment_id": razorpay_payment_id,
                 "amount": payment.total_amount,
             }
+        )
+
+        logger.info(
+            f"Payment verified successfully for order {order.order_number} (Payment ID: {razorpay_payment_id}, Amount: ₹{payment.total_amount})"
         )
 
         return {
@@ -274,17 +346,41 @@ class PaymentService:
                 order = await self.order_repo.get_by_id(payment.order_id)
                 if order:
                     order.status = OrderStatus.CONFIRMED
-                    order.payment_status = "completed"
+                    order.payment_status = "paid"
+                    order.payment_method = "razorpay"
                     order.confirmed_at = now
                     self.db.add(order)
 
                 await self.db.commit()
+
+                if order:
+                    try:
+                        from app.core.websocket import manager, WSEventType, create_ws_message
+                        from app.services.kitchen_service import KitchenService
+                        kitchen_svc = KitchenService(self.db)
+                        formatted_order = kitchen_svc.format_single_order(order)
+                        kitchen_msg = create_ws_message(
+                            WSEventType.NEW_ORDER,
+                            {
+                                "order": formatted_order,
+                                "message": f"Webhook: New confirmed table order #{order.order_number} received!"
+                            }
+                        )
+                        await manager.broadcast_to_role("kitchen", kitchen_msg)
+                        await manager.broadcast_to_room("kitchen", kitchen_msg)
+                    except Exception as ws_err:
+                        logger.warning(f"WebSocket kitchen broadcast deferred in webhook: {ws_err}")
 
         elif event == "payment.failed":
             if payment.payment_status != PaymentStatus.COMPLETED:
                 payment.payment_status = PaymentStatus.FAILED
                 payment.failure_reason = payment_entity.get("error_description", "Payment failed")
                 self.db.add(payment)
+                order = await self.order_repo.get_by_id(payment.order_id)
+                if order:
+                    order.payment_status = "failed"
+                    order.payment_method = "razorpay"
+                    self.db.add(order)
                 await self.db.commit()
 
         return {"status": "processed", "event": event}
