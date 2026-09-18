@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
     CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
 
+    # ENV-based Admin & Kitchen credentials (never hardcoded)
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "")
+    ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "")
+    KITCHEN_EMAIL: str = os.getenv("KITCHEN_EMAIL", "")
+    KITCHEN_PASSWORD: str = os.getenv("KITCHEN_PASSWORD", "")
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
