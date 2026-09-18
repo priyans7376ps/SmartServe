@@ -225,22 +225,39 @@ async def get_current_user(
 def setup_security_middleware(app):
     """
     Configure security middleware for the FastAPI application.
-    
-    Args:
-        app: FastAPI application instance
     """
-    # Add security headers middleware
+
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
         response = await call_next(request)
+
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+
+        # Allow FastAPI Swagger UI / ReDoc assets.
+        # Keep normal API responses restricted.
+        if request.url.path in {
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/api/v1/openapi.json",
+        }:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https:; "
+                "font-src 'self' data: https:; "
+                "connect-src 'self' https:;"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = "default-src 'self'"
+
         return response
-
-
 def check_role(user: Dict[str, Any], required_role: str) -> bool:
     """
     Check if user has the required role.
