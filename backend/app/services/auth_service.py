@@ -19,11 +19,14 @@ class AuthService:
             )
 
         hashed_pw = get_password_hash(signup_data.password)
+
+        phone = signup_data.phone.strip() if signup_data.phone else None
+
         user_dict = {
             "email": signup_data.email,
             "hashed_password": hashed_pw,
             "full_name": signup_data.full_name,
-            "phone": signup_data.phone,
+            "phone": phone,
             "role": signup_data.role or UserRole.CUSTOMER,
             "is_active": True,
             "is_verified": True
