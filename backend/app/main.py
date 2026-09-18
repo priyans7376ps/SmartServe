@@ -6,7 +6,7 @@ and global exception handling.
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -25,10 +25,9 @@ app = FastAPI(
     description="SmartServe Restaurant Management System API",
     version=settings.VERSION,
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url=None,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
-
 # CORS
 app.add_middleware(
     CORSMiddleware,
