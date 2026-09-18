@@ -1,7 +1,9 @@
-import axios from 'axios';
+﻿import axios from 'axios';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL + '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -29,7 +31,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('admin_refresh_token') || localStorage.getItem('refresh_token');
       if (refreshToken) {
         try {
-          const res = await axios.post('/api/v1/auth/refresh', {
+          const res = await axios.post(API_BASE_URL + '/api/v1/auth/refresh', {
             refresh_token: refreshToken,
           });
           const { access_token, refresh_token: newRefresh } = res.data;
@@ -59,3 +61,5 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+

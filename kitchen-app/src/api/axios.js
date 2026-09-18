@@ -1,7 +1,9 @@
-import axios from 'axios';
+﻿import axios from 'axios';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL + '/api/v1',
   timeout: 15000,
 });
 
@@ -29,7 +31,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('kitchen_refresh_token');
       if (refreshToken) {
         try {
-          const res = await axios.post('/api/v1/kitchen/auth/refresh', { refresh_token: refreshToken });
+          const res = await axios.post(API_BASE_URL + '/api/v1/kitchen/auth/refresh', { refresh_token: refreshToken });
           const { access_token, refresh_token: newRefresh } = res.data;
           localStorage.setItem('kitchen_access_token', access_token);
           if (newRefresh) localStorage.setItem('kitchen_refresh_token', newRefresh);
@@ -48,3 +50,5 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+
