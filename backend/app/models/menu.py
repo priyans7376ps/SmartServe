@@ -53,6 +53,7 @@ class MenuItem(BaseModel):
     
     # Media
     image_url: Mapped[Optional[str]] = Column(String(500), nullable=True)
+    image_public_id: Mapped[Optional[str]] = Column(String(500), nullable=True)  # Cloudinary public_id for managed cleanup
     image_urls: Mapped[Optional[dict]] = Column(JSONB, nullable=True, default=list)  # Multiple images
     video_url: Mapped[Optional[str]] = Column(String(500), nullable=True)
     
@@ -169,6 +170,7 @@ class MenuItem(BaseModel):
             "compare_price": self.compare_price,
             "discount_percentage": self.discount_percentage,
             "image_url": self.image_url,
+            "image_public_id": self.image_public_id,
             "image_urls": self.image_urls,
             "is_available": self.is_available,
             "is_todays_special": self.is_todays_special,

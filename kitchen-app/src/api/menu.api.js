@@ -21,13 +21,28 @@ export const menuApi = {
     return res.data;
   },
 
-  uploadImage: async (file) => {
+  /**
+   * Upload a menu item image to Cloudinary via the SmartServe backend.
+   *
+   * SECURITY:
+   *   - The file is sent to the SmartServe backend as multipart/form-data.
+   *   - The backend (not the frontend) communicates with Cloudinary.
+   *   - No Cloudinary API secret is present in this file or any frontend code.
+   *
+   * @param {File} file - A JPG, PNG, or WEBP File object from <input type="file">.
+   * @returns {Promise<{success: boolean, data: {image_url: string, image_public_id: string}}>}
+   */
+  uploadMenuImage: async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('folder', 'menu_items');
-    // Let browser set the multipart/form-data boundary automatically
-    const res = await api.post('/media/upload', formData);
+    formData.append('image', file);
+    const res = await api.post('/kitchen/menu/upload-image', formData);
     return res.data;
+  },
+
+  // Legacy alias — kept for backward compatibility
+  uploadImage: async (file) => {
+    return menuApi.uploadMenuImage(file);
   },
 };
 

@@ -33,6 +33,7 @@ aiofiles==23.2.1
 # File Uploads
 Pillow==10.1.0
 python-magic==0.4.27
+cloudinary>=1.36.0
 
 # Utilities
 python-dotenv==1.0.0

@@ -1,74 +1,133 @@
-import os
-import uuid
+"""
+SmartServe Image Upload Service
+---------------------------------
+Production-ready menu image upload service using Cloudinary.
+
+Security guarantees:
+  - Cloudinary credentials NEVER exposed in logs, responses, or exceptions.
+  - Strict MIME, extension, and magic-bytes validation before any upload.
+  - 5 MB size cap enforced before reading full bytes.
+  - No permanent local file storage.
+"""
+
+import logging
 from fastapi import UploadFile, HTTPException, status
-from app.core.config import settings
+
+from app.core import cloudinary_service
 from app.schemas.media import ImageUploadResponse
 
+logger = logging.getLogger(__name__)
+
+# 5 MB hard limit — must match cloudinary_service.MAX_FILE_SIZE_BYTES
+MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+
+
 class ImageUploadService:
-    def __init__(self):
-        self.cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
-        self.api_key = os.getenv("CLOUDINARY_API_KEY")
-        self.api_secret = os.getenv("CLOUDINARY_API_SECRET")
+    """
+    Validates and uploads an image to Cloudinary.
 
-    async def upload_image(self, file: UploadFile, folder: str = "smartserve") -> ImageUploadResponse:
-        # Validate content type
-        content_type = file.content_type or ""
-        if not content_type.startswith("image/"):
+    The service:
+      1. Validates content-type, extension, file size.
+      2. Reads the file bytes.
+      3. Performs a magic-bytes check (content-type spoofing prevention).
+      4. Uploads to Cloudinary under smartserve/menu-items/.
+      5. Returns ImageUploadResponse with url = Cloudinary secure_url.
+
+    The service does NOT:
+      - Store files permanently on disk.
+      - Expose Cloudinary credentials in any return value or log message.
+      - Accept SVG, GIF, PDF, video, or arbitrary file types.
+    """
+
+    async def upload_image(
+        self, file: UploadFile, folder: str = "smartserve/menu-items"
+    ) -> ImageUploadResponse:
+        """
+        Upload an image file to Cloudinary.
+
+        Args:
+            file: FastAPI UploadFile from multipart/form-data.
+            folder: Cloudinary folder — defaults to smartserve/menu-items.
+
+        Returns:
+            ImageUploadResponse with url, public_id, etc.
+
+        Raises:
+            HTTPException 400: unsupported mime or extension or bad magic bytes.
+            HTTPException 413: file exceeds 5 MB.
+            HTTPException 500: Cloudinary not configured or upload failure.
+        """
+        content_type = (file.content_type or "").lower().strip()
+        filename = file.filename or "upload"
+
+        # --- Pre-read MIME check (fast-fail before reading full file) ---
+        allowed_mimes = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
+        if content_type not in allowed_mimes:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Only image files are allowed."
+                detail=(
+                    "Unsupported image type. "
+                    "Please upload a JPG, PNG, or WEBP file."
+                ),
             )
 
-        # Read file bytes
+        # --- Read file bytes ---
         file_bytes = await file.read()
-        if len(file_bytes) > settings.MAX_UPLOAD_SIZE:
+
+        # --- Size check (413 per spec) ---
+        if len(file_bytes) > MAX_UPLOAD_SIZE:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"File size exceeds maximum limit of {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB."
+                status_code=413,
+                detail=(
+                    f"Image size exceeds 5 MB limit "
+                    f"({len(file_bytes) / (1024 * 1024):.1f} MB received). "
+                    "Please compress the image and try again."
+                ),
             )
 
-        # Check Cloudinary configuration
-        if self.cloud_name and self.api_key and self.api_secret:
-            try:
-                import cloudinary
-                import cloudinary.uploader
-                cloudinary.config(
-                    cloud_name=self.cloud_name,
-                    api_key=self.api_key,
-                    api_secret=self.api_secret,
-                    secure=True,
-                )
-                res = cloudinary.uploader.upload(
-                    file_bytes,
-                    folder=folder,
-                    resource_type="image"
-                )
-                return ImageUploadResponse(
-                    url=res.get("secure_url") or res.get("url"),
-                    public_id=res.get("public_id"),
-                    width=res.get("width"),
-                    height=res.get("height"),
-                    format=res.get("format"),
-                    bytes=res.get("bytes")
-                )
-            except Exception as e:
-                # Fallback to local upload on Cloudinary failure
-                pass
+        # --- Full validation (MIME + extension + magic bytes) ---
+        try:
+            cloudinary_service.validate_image(file_bytes, content_type, filename)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
 
-        # Local storage fallback
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-        ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        filepath = os.path.join(settings.UPLOAD_DIR, filename)
+        # --- Upload to Cloudinary ---
+        try:
+            result = cloudinary_service.upload_menu_image(file_bytes, filename)
+        except RuntimeError as exc:
+            # Cloudinary not configured
+            logger.error("Cloudinary configuration error: %s", str(exc))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Image upload service is not configured. "
+                    "Please contact the administrator."
+                ),
+            ) from exc
+        except Exception as exc:  # pylint: disable=broad-except
+            # SDK / network error — log without credentials
+            logger.error(
+                "Cloudinary upload failed for file '%s': %s: %s",
+                filename,
+                type(exc).__name__,
+                str(exc),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Image upload failed. Please try again.",
+            ) from exc
 
-        with open(filepath, "wb") as f:
-            f.write(file_bytes)
+        secure_url = result["secure_url"]
+        public_id = result["public_id"]
 
-        url = f"/uploads/{filename}"
         return ImageUploadResponse(
-            url=url,
-            public_id=filename,
+            url=secure_url,
+            image_url=secure_url,          # alias for menu schema consumers
+            public_id=public_id,
+            image_public_id=public_id,     # alias for menu schema consumers
+            format=filename.rsplit(".", 1)[-1].lower() if "." in filename else None,
             bytes=len(file_bytes),
-            format=ext
         )
-

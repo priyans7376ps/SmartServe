@@ -2,9 +2,6 @@ import axios from 'axios';
 
 const api = axios.create({
   baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
   timeout: 15000,
 });
 
@@ -13,6 +10,10 @@ api.interceptors.request.use(
     const token = localStorage.getItem('kitchen_access_token') || localStorage.getItem('kitchen_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // If request payload is FormData (e.g. image upload), delete Content-Type so browser sets boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },

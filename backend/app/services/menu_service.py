@@ -2,12 +2,17 @@ from typing import List, Optional, Tuple
 import uuid
 import re
 import math
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 from app.repositories.menu_repository import MenuRepository
 from app.repositories.restaurant_repository import RestaurantRepository
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemResponse, PaginatedMenuItemResponse
+from app.core import cloudinary_service
+
+logger = logging.getLogger(__name__)
+
 
 class MenuService:
     def __init__(self, db: AsyncSession):
@@ -134,7 +139,33 @@ class MenuService:
         if "name" in update_dict and not update_dict.get("slug"):
             update_dict["slug"] = self._generate_slug(update_dict["name"])
 
+        # --- Cloudinary old-image cleanup on image replacement ---
+        # Only delete old Cloudinary asset AFTER the DB update succeeds.
+        old_public_id: Optional[str] = None
+        new_public_id = update_dict.get("image_public_id")
+        existing_public_id = getattr(item, "image_public_id", None)
+
+        if (
+            new_public_id                                # new image is being set
+            and existing_public_id                       # old image existed in Cloudinary
+            and new_public_id != existing_public_id      # it's actually different
+        ):
+            old_public_id = existing_public_id
+
         updated = await self.repo.update(item, update_dict)
+
+        # Delete old Cloudinary asset AFTER successful DB commit
+        if old_public_id:
+            deleted = cloudinary_service.delete_menu_image(old_public_id)
+            if not deleted:
+                # Log but do NOT undo the successful update
+                logger.warning(
+                    "Could not delete old Cloudinary asset public_id=%s "
+                    "after updating menu item id=%s. Manual cleanup may be needed.",
+                    old_public_id,
+                    str(item_id),
+                )
+
         return MenuItemResponse.model_validate(updated)
 
     async def delete_menu_item(self, item_id: uuid.UUID) -> bool:
@@ -144,5 +175,23 @@ class MenuService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Menu item not found."
             )
+
+        # Capture public_id before DB update
+        public_id: Optional[str] = getattr(item, "image_public_id", None)
+
+        # Soft-delete in DB first
         await self.repo.update(item, {"is_active": False, "is_available": False})
+
+        # Attempt Cloudinary cleanup AFTER successful DB update
+        # A cleanup failure must NOT block the deletion response.
+        if public_id:
+            deleted = cloudinary_service.delete_menu_image(public_id)
+            if not deleted:
+                logger.warning(
+                    "Could not delete Cloudinary asset public_id=%s "
+                    "for deleted menu item id=%s. Manual cleanup may be needed.",
+                    public_id,
+                    str(item_id),
+                )
+
         return True

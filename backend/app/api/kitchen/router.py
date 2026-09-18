@@ -5,7 +5,7 @@ Complete production-ready endpoints for Kitchen Staff & Display System.
 
 from typing import Optional, List, Dict, Any
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_kitchen, get_optional_current_user
@@ -19,6 +19,7 @@ from app.services.auth_service import AuthService
 from app.services.kitchen_service import KitchenService
 from app.services.menu_service import MenuService
 from app.services.category_service import CategoryService
+from app.services.image_service import ImageUploadService
 from app.repositories.notification_repository import NotificationRepository
 
 router = APIRouter()
@@ -205,6 +206,40 @@ async def cancel_kitchen_order(
 # -----------------------------------------------------------------------------
 # 5 & 6. MENU & CATEGORY MANAGEMENT FOR KITCHEN
 # -----------------------------------------------------------------------------
+@router.post("/menu/upload-image", summary="Upload Menu Item Image to Cloudinary")
+async def upload_menu_item_image(
+    file: Optional[UploadFile] = File(None, description="JPG, PNG, or WEBP image — max 5 MB"),
+    image: Optional[UploadFile] = File(None, description="Alternative field name for image file"),
+    current_user: User = Depends(get_current_kitchen),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Upload a menu item image to Cloudinary.
+
+    - Authentication: Kitchen / Admin / Super Admin only.
+    - Accepted formats: JPEG, JPG, PNG, WEBP.
+    - Maximum size: 5 MB.
+    - Images are stored under: smartserve/menu-items/
+    - Returns: image_url (Cloudinary HTTPS URL) + image_public_id.
+    - The Cloudinary API secret is NEVER returned in this response.
+    """
+    upload_file = file or image
+    if not upload_file:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Image file is required (form-data field 'file' or 'image')."
+        )
+    service = ImageUploadService()
+    result = await service.upload_image(upload_file, folder="smartserve/menu-items")
+    return {
+        "success": True,
+        "message": "Menu image uploaded successfully.",
+        "data": {
+            "image_url": result.url,
+            "image_public_id": result.public_id,
+        }
+    }
+
 @router.post("/menu", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED, summary="Create Menu Item")
 async def create_kitchen_menu_item(
     data: MenuItemCreate,

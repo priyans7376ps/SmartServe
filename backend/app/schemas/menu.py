@@ -13,6 +13,7 @@ class MenuItemCreate(BaseModel):
     price: float = Field(..., ge=0.0)
     compare_price: Optional[float] = Field(None, ge=0.0)
     image_url: Optional[str] = None
+    image_public_id: Optional[str] = None  # Cloudinary public_id for asset management
     is_available: bool = True
     is_todays_special: bool = False
     is_featured: bool = False
@@ -58,6 +59,7 @@ class MenuItemUpdate(BaseModel):
     price: Optional[float] = Field(None, ge=0.0)
     compare_price: Optional[float] = Field(None, ge=0.0)
     image_url: Optional[str] = None
+    image_public_id: Optional[str] = None  # Cloudinary public_id for asset management
     is_available: Optional[bool] = None
     is_todays_special: Optional[bool] = None
     is_featured: Optional[bool] = None
@@ -109,6 +111,7 @@ class MenuItemResponse(BaseModel):
     price: float
     compare_price: Optional[float] = None
     image_url: Optional[str] = None
+    image_public_id: Optional[str] = None  # Cloudinary public_id — included in all menu responses
     is_available: bool = True
     is_active: bool = True
     is_todays_special: bool = False
