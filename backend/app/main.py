@@ -28,6 +28,26 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
+
+
+@app.get("/redoc", include_in_schema=False, response_class=HTMLResponse)
+async def custom_redoc():
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>SmartServe API - ReDoc</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+    </head>
+    <body>
+        <redoc spec-url="/api/v1/openapi.json"></redoc>
+
+        <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+    </body>
+    </html>
+    """
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
