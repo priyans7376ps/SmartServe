@@ -24,6 +24,8 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="SmartServe Restaurant Management System API",
     version=settings.VERSION,
+    docs_url="/docs",
+    redoc_url="/redoc",
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
 )
 

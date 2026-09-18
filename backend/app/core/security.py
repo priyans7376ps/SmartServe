@@ -248,8 +248,8 @@ def setup_security_middleware(app):
         }:
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+                "style-src 'self' 'unsafe-inline' https:; "
                 "img-src 'self' data: https:; "
                 "font-src 'self' data: https:; "
                 "connect-src 'self' https:;"
@@ -258,6 +258,7 @@ def setup_security_middleware(app):
             response.headers["Content-Security-Policy"] = "default-src 'self'"
 
         return response
+
 def check_role(user: Dict[str, Any], required_role: str) -> bool:
     """
     Check if user has the required role.
