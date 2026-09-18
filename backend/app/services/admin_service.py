@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta, time
 import uuid
 import csv
 import io
+import re
 from fastapi import HTTPException, status
 from sqlalchemy import select, func, and_, or_, desc, extract
 from sqlalchemy.orm import selectinload
@@ -667,6 +668,26 @@ class AdminService:
     # -------------------------------------------------------------
     # 6. RESTAURANT SETTINGS
     # -------------------------------------------------------------
+    @staticmethod
+    def _parse_time(val: Any) -> Optional[time]:
+        """Safely parse time strings (HH:MM or HH:MM:SS) into datetime.time objects for PostgreSQL."""
+        if val is None or isinstance(val, time):
+            return val
+        if isinstance(val, str):
+            val = val.strip()
+            if not val:
+                return None
+            parts = val.split(":")
+            if len(parts) >= 2:
+                try:
+                    hour = int(parts[0])
+                    minute = int(parts[1])
+                    second = int(parts[2]) if len(parts) > 2 else 0
+                    return time(hour, minute, second)
+                except ValueError:
+                    return None
+        return None
+
     async def get_restaurant_settings(self) -> Restaurant:
         res = await self.db.execute(select(Restaurant))
         rest = res.scalars().first()
@@ -677,12 +698,13 @@ class AdminService:
                 slug="smartserve-bistro",
                 email="admin@smartserve.com",
                 phone="+91 98765 43210",
-                address_line1="123 Innovation Way, Tech Park",
+                address_line1="124 Gourmet Boulevard, Tech Park",
                 tax_rate=0.05,
                 currency="INR",
-                opening_time=time(9, 0),
+                opening_time=time(10, 0),
                 closing_time=time(23, 0),
-                is_open=True
+                is_open=True,
+                features={"gstin": "27AAAAA0000A1Z5", "timezone": "Asia/Kolkata"}
             )
             self.db.add(rest)
             await self.db.commit()
@@ -690,23 +712,90 @@ class AdminService:
         return rest
 
     async def update_restaurant_settings(
-        self, data: Dict[str, Any], admin_user: User
+        self, data: Dict[str, Any], admin_user: Any
     ) -> Restaurant:
         rest = await self.get_restaurant_settings()
-        for k, v in data.items():
-            if v is not None and hasattr(rest, k):
-                setattr(rest, k, v)
+
+        # Name & Slug
+        if "name" in data and data["name"] is not None:
+            name = str(data["name"]).strip()
+            if name:
+                rest.name = name
+                if not rest.slug:
+                    rest.slug = re.sub(r'[^a-zA-Z0-9]+', '-', name.lower()).strip('-') or "smartserve"
+
+        # Physical address (frontend sends 'address', DB model has 'address_line1')
+        if "address" in data and data["address"] is not None:
+            rest.address_line1 = str(data["address"]).strip()
+        elif "address_line1" in data and data["address_line1"] is not None:
+            rest.address_line1 = str(data["address_line1"]).strip()
+
+        # Contact & Branding
+        if "phone" in data and data["phone"] is not None:
+            rest.phone = str(data["phone"]).strip()
+        if "email" in data and data["email"] is not None:
+            rest.email = str(data["email"]).strip()
+        if "logo_url" in data and data["logo_url"] is not None:
+            rest.logo_url = str(data["logo_url"]).strip()
+        if "description" in data and data["description"] is not None:
+            rest.description = str(data["description"]).strip()
+
+        # Financials
+        if "currency" in data and data["currency"] is not None:
+            rest.currency = str(data["currency"]).strip()
+        if "tax_rate" in data and data["tax_rate"] is not None:
+            try:
+                rest.tax_rate = float(data["tax_rate"])
+            except (ValueError, TypeError):
+                pass
+        if "is_open" in data and data["is_open"] is not None:
+            rest.is_open = bool(data["is_open"])
+
+        # Operating hours (convert string to datetime.time for PostgreSQL / asyncpg)
+        if "opening_time" in data and data["opening_time"] is not None:
+            op = self._parse_time(data["opening_time"])
+            if op is not None:
+                rest.opening_time = op
+        if "closing_time" in data and data["closing_time"] is not None:
+            cl = self._parse_time(data["closing_time"])
+            if cl is not None:
+                rest.closing_time = cl
+
+        # Features dictionary (GSTIN, timezone, extra metadata)
+        features = dict(rest.features or {})
+        if "gstin" in data and data["gstin"] is not None:
+            features["gstin"] = str(data["gstin"]).strip()
+        if "timezone" in data and data["timezone"] is not None:
+            features["timezone"] = str(data["timezone"]).strip()
+        rest.features = features
+
         self.db.add(rest)
         await self.db.commit()
         await self.db.refresh(rest)
 
-        await self.audit_repo.log_action(
-            admin_id=admin_user.id,
-            action="SETTINGS_UPDATED",
-            resource_type="restaurant",
-            resource_id=str(rest.id),
-            details=data
-        )
+        # Audit log (gracefully handles ENV Admin principals)
+        try:
+            admin_id = getattr(admin_user, "id", None)
+            is_env = (
+                getattr(admin_user, "_is_env", False)
+                or hasattr(admin_user, "__dataclass_fields__")
+                or type(admin_user).__name__ == "EnvPrincipal"
+            )
+            audit_details = {
+                "name": rest.name,
+                "currency": rest.currency,
+                "tax_rate": rest.tax_rate,
+                "admin_email": getattr(admin_user, "email", "admin@smartserve.com"),
+            }
+            await self.audit_repo.log_action(
+                admin_id=None if is_env else admin_id,
+                action="SETTINGS_UPDATED",
+                resource_type="restaurant",
+                resource_id=str(rest.id),
+                details=audit_details
+            )
+        except Exception:
+            pass
 
         return rest
 

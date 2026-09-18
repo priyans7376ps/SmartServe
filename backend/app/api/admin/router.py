@@ -4,14 +4,14 @@ Includes protected endpoints for all 11 Admin Portal modules.
 Enforces strict server-side Admin role check (`get_current_admin`).
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, timezone
 import uuid
 from fastapi import APIRouter, Depends, status, Query, HTTPException, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
-from app.core.deps import get_db, get_current_admin
+from app.core.deps import get_db, get_current_admin, EnvPrincipal
 from app.core.security import get_password_hash, verify_password
 from app.models.user import User, UserRole
 from app.models.order import Order, OrderStatus
@@ -628,7 +628,7 @@ async def export_report_csv(
 @router.get("/restaurant", summary="Get restaurant settings")
 async def get_restaurant(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: Union[User, EnvPrincipal] = Depends(get_current_admin)
 ):
     service = AdminService(db)
     rest = await service.get_restaurant_settings()
@@ -638,7 +638,7 @@ async def get_restaurant(
 @router.get("/settings", summary="Get restaurant settings (alias)")
 async def get_settings_alias(
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: Union[User, EnvPrincipal] = Depends(get_current_admin)
 ):
     service = AdminService(db)
     rest = await service.get_restaurant_settings()
@@ -649,7 +649,7 @@ async def get_settings_alias(
 async def update_restaurant(
     payload: RestaurantSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: Union[User, EnvPrincipal] = Depends(get_current_admin)
 ):
     service = AdminService(db)
     rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
@@ -660,7 +660,7 @@ async def update_restaurant(
 async def update_settings_alias(
     payload: RestaurantSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: Union[User, EnvPrincipal] = Depends(get_current_admin)
 ):
     service = AdminService(db)
     rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)
@@ -671,7 +671,7 @@ async def update_settings_alias(
 async def patch_settings_alias(
     payload: RestaurantSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    admin: Union[User, EnvPrincipal] = Depends(get_current_admin)
 ):
     service = AdminService(db)
     rest = await service.update_restaurant_settings(payload.model_dump(exclude_unset=True), admin_user=admin)

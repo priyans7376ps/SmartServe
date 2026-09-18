@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 
 from app.models.audit_log import AuditLog
+from app.models.user import User
 from app.repositories.base import BaseRepository
 
 
@@ -19,15 +20,35 @@ class AuditRepository(BaseRepository[AuditLog]):
         resource_id: Optional[str] = None,
         ip_address: Optional[str] = None,
         details: Optional[dict] = None
-    ) -> AuditLog:
-        return await self.create({
-            "admin_id": admin_id,
-            "action": action,
-            "resource_type": resource_type,
-            "resource_id": str(resource_id) if resource_id else None,
-            "ip_address": ip_address,
-            "details": details or {},
-        })
+    ) -> Optional[AuditLog]:
+        valid_admin_id = None
+        log_details = dict(details or {})
+
+        if admin_id:
+            try:
+                user_check = await self.db.execute(
+                    select(User.id).where(User.id == admin_id)
+                )
+                if user_check.scalar_one_or_none() is not None:
+                    valid_admin_id = admin_id
+                else:
+                    # Non-DB principal (e.g. ENV admin) — record in details to avoid FK violation
+                    log_details["env_admin_id"] = str(admin_id)
+            except Exception:
+                valid_admin_id = None
+
+        try:
+            return await self.create({
+                "admin_id": valid_admin_id,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": str(resource_id) if resource_id else None,
+                "ip_address": ip_address,
+                "details": log_details,
+            })
+        except Exception:
+            # Audit logging failure should not abort business transactions
+            return None
 
     async def search_logs(
         self,

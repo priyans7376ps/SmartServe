@@ -182,6 +182,7 @@ class RestaurantSettingsUpdate(BaseModel):
     description: Optional[str] = None
     logo_url: Optional[str] = None
     address: Optional[str] = None
+    address_line1: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     gstin: Optional[str] = None

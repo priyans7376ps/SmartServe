@@ -147,25 +147,41 @@ class Restaurant(BaseModel):
     
     def to_dict(self) -> dict:
         """Convert restaurant to dictionary."""
+        features = self.features or {}
+        
+        # Format opening and closing times as HH:MM
+        op_time = "10:00"
+        if isinstance(self.opening_time, time):
+            op_time = self.opening_time.strftime("%H:%M")
+        elif self.opening_time:
+            op_time = str(self.opening_time)[:5]
+
+        cl_time = "23:00"
+        if isinstance(self.closing_time, time):
+            cl_time = self.closing_time.strftime("%H:%M")
+        elif self.closing_time:
+            cl_time = str(self.closing_time)[:5]
+
         return {
             "id": str(self.id),
             "name": self.name,
-            "slug": self.slug,
+            "slug": self.slug or "smartserve-bistro",
             "description": self.description,
             "tagline": self.tagline,
             "email": self.email,
             "phone": self.phone,
-            "address": self.full_address or self.address_line1 or "124 Gourmet Boulevard, Tech Park",
+            "address": self.address_line1 or self.full_address or "124 Gourmet Boulevard, Tech Park",
+            "address_line1": self.address_line1,
             "logo_url": self.logo_url or "",
             "banner_url": self.banner_url or "",
-            "opening_time": str(self.opening_time) if self.opening_time else "10:00",
-            "closing_time": str(self.closing_time) if self.closing_time else "23:00",
-            "is_open": self.is_open,
+            "opening_time": op_time,
+            "closing_time": cl_time,
+            "is_open": self.is_open if self.is_open is not None else True,
             "currency": self.currency or "INR",
-            "tax_rate": self.tax_rate if self.tax_rate is not None else 0.05,
-            "service_charge_rate": self.service_charge_rate or 0.0,
-            "gstin": getattr(self, "gstin", "27AAAAA0000A1Z5") or "27AAAAA0000A1Z5",
-            "timezone": "Asia/Kolkata",
-            "is_active": self.is_active,
+            "tax_rate": float(self.tax_rate) if self.tax_rate is not None else 0.05,
+            "service_charge_rate": float(self.service_charge_rate) if self.service_charge_rate is not None else 0.0,
+            "gstin": features.get("gstin") or getattr(self, "gstin", "27AAAAA0000A1Z5") or "27AAAAA0000A1Z5",
+            "timezone": features.get("timezone") or "Asia/Kolkata",
+            "is_active": self.is_active if self.is_active is not None else True,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
