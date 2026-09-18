@@ -81,7 +81,8 @@ class FakeSession:
         all_tables = [
             "restaurants", "tables", "categories", "menu_items", "users", "roles",
             "carts", "cart_items", "orders", "order_items", "payments", "coupons", "coupon_usages",
-            "complaints", "audit_logs", "loyalty_points", "points_transactions", "notifications", "order_status_logs"
+            "complaints", "audit_logs", "loyalty_points", "points_transactions", "notifications", "order_status_logs",
+            "waiter_requests"
         ]
         for t in all_tables:
             if f"from {t}" in str_stmt or f"join {t}" in str_stmt or f"into {t}" in str_stmt:

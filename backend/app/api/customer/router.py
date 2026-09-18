@@ -5,7 +5,9 @@ Complete RESTful customer endpoints covering all 17 customer modules.
 
 from typing import Optional, List, Dict, Any
 import uuid
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_customer, get_optional_current_user
@@ -630,3 +632,100 @@ async def remove_favorite_placeholder(item_id: uuid.UUID):
         "message": "Item removed from favorites",
         "menu_item_id": str(item_id)
     }
+
+
+# -----------------------------------------------------------------------------
+# 18. PUBLIC RESTAURANT SETTINGS (CUSTOMER-SAFE)
+# -----------------------------------------------------------------------------
+@router.get("/restaurant", summary="Get public restaurant details for customers")
+async def get_customer_restaurant_settings(db: AsyncSession = Depends(get_db)):
+    """
+    Returns public restaurant configuration for customer app display.
+    Reads the exact same PostgreSQL record configured in Admin Settings.
+    Excludes any private secrets or admin-only data.
+    """
+    from app.services.admin_service import AdminService
+    service = AdminService(db)
+    rest = await service.get_restaurant_settings()
+    return rest.to_dict()
+
+
+# -----------------------------------------------------------------------------
+# 19. CALL WAITER & ASSISTANCE
+# -----------------------------------------------------------------------------
+class CallWaiterRequest(BaseModel):
+    table_number: Any
+    notes: Optional[str] = None
+    request_type: Optional[str] = "CALL_WAITER"
+
+
+@router.post("/call-waiter", status_code=status.HTTP_201_CREATED, summary="Call Waiter to Table")
+async def customer_call_waiter(
+    payload: CallWaiterRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Invoked when customer taps 'Call Waiter'.
+    Persists the request in PostgreSQL and broadcasts real-time alert to Kitchen KDS.
+    """
+    from app.models.waiter_request import WaiterRequest
+    from app.core.websocket import manager
+
+    table_str = str(payload.table_number).strip() or "1"
+    waiter_req = WaiterRequest(
+        id=uuid.uuid4(),
+        table_number=table_str,
+        request_type=payload.request_type or "CALL_WAITER",
+        status="pending",
+        notes=payload.notes or "",
+    )
+    db.add(waiter_req)
+    await db.commit()
+    await db.refresh(waiter_req)
+
+    # Broadcast real-time notification to Kitchen
+    event_data = {
+        "event": "waiter_call",
+        "type": "CALL_WAITER",
+        "request_id": str(waiter_req.id),
+        "id": str(waiter_req.id),
+        "table_number": waiter_req.table_number,
+        "status": waiter_req.status,
+        "notes": waiter_req.notes,
+        "created_at": waiter_req.created_at.isoformat() if waiter_req.created_at else None,
+    }
+    try:
+        await manager.broadcast_to_room("kitchen", event_data)
+        await manager.broadcast_to_role("kitchen", event_data)
+        await manager.broadcast_to_all(event_data)
+    except Exception:
+        pass
+
+    req_dict = waiter_req.to_dict()
+    return {
+        "status": "success",
+        "message": f"Staff notified! A waiter will arrive at Table #{table_str} shortly.",
+        "data": req_dict,
+        **req_dict
+    }
+
+
+@router.get("/waiter-status/{request_id}", summary="Check Waiter Call Status")
+async def get_waiter_call_status(
+    request_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    from app.models.waiter_request import WaiterRequest
+    try:
+        req_uuid = uuid.UUID(request_id)
+        stmt = select(WaiterRequest).where((WaiterRequest.id == req_uuid) | (WaiterRequest.id == str(request_id)))
+    except Exception:
+        stmt = select(WaiterRequest).where(WaiterRequest.id == request_id)
+
+    res = await db.execute(stmt)
+    waiter_req = res.scalars().first()
+    if not waiter_req:
+        raise HTTPException(status_code=404, detail="Waiter request not found")
+    return waiter_req.to_dict()
+
+

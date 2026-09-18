@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Home, UtensilsCrossed, ShoppingBag, User } from 'lucide-react';
 import { useCartStore } from '../../store/useCartStore';
+import { useTableStore } from '../../store/useTableStore';
 import { cn } from '../../lib/cn';
 
 const NAV_ITEMS = [
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
 export default function Footer() {
   const location = useLocation();
   const { getItemCount } = useCartStore();
+  const { restaurantName } = useTableStore();
   const itemCount = getItemCount();
 
   const isActive = (path) => location.pathname === path;
@@ -25,7 +27,7 @@ export default function Footer() {
       <footer className="hidden md:block border-t border-subtle bg-surface-1 py-6 mt-12" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-caption text-ink-muted font-medium">
-            SmartServe &copy; {new Date().getFullYear()} · Digital Table Ordering System
+            {restaurantName ? `${restaurantName} · SmartServe` : 'SmartServe'} &copy; {new Date().getFullYear()} · Digital Table Ordering System
           </p>
           <nav className="flex items-center gap-6" aria-label="Footer navigation">
             {NAV_ITEMS.map(({ path, label }) => (

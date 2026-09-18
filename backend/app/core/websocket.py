@@ -269,6 +269,10 @@ async def handle_websocket_connection(
         connection_manager: WebSocket connection manager
     """
     rooms = [f"user:{user_id}", f"role:{user_role}"]
+    if user_role == "kitchen":
+        rooms.append("kitchen")
+    elif user_role in ("admin", "super_admin"):
+        rooms.append("admin")
     
     await connection_manager.connect(
         websocket,

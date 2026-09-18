@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChefHat, Volume2, VolumeX, Plus, User, LogOut, Clock, Activity } from 'lucide-react';
+import { ChefHat, Volume2, VolumeX, Plus, User, LogOut, Clock, Activity, Bell } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useKitchenOrderStore } from '../../store/useKitchenOrderStore';
+import { useWaiterStore } from '../../store/useWaiterStore';
 import { cn } from '../../lib/cn';
 
 export default function Navbar() {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { kitchenStatus, setKitchenStatus, soundEnabled, toggleSound, addDemoOrder, orders } = useKitchenOrderStore();
+  const { requests, setIsModalOpen } = useWaiterStore();
   const [timeString, setTimeString] = useState('');
 
   useEffect(() => {
@@ -127,6 +129,35 @@ export default function Navbar() {
         >
           <Plus className="w-4 h-4" />
           <span className="hidden sm:inline">Add Sample Order</span>
+        </button>
+
+        {/* Customer Waiter Assistance Button */}
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className={cn(
+            'px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 relative active:scale-95',
+            requests.some((r) => r.status === 'pending')
+              ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-glow-amber animate-pulse'
+              : requests.length > 0
+              ? 'bg-slate-800 text-amber-400 border-amber-500/40'
+              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+          )}
+          title="Customer Waiter Calls"
+        >
+          <Bell className={cn('w-4 h-4', requests.some((r) => r.status === 'pending') && 'animate-bounce')} />
+          <span className="hidden sm:inline">Waiter Calls</span>
+          {requests.length > 0 && (
+            <span
+              className={cn(
+                'px-1.5 py-0.5 rounded-full text-[10px] font-black',
+                requests.some((r) => r.status === 'pending')
+                  ? 'bg-slate-950 text-amber-400'
+                  : 'bg-amber-500/20 text-amber-400'
+              )}
+            >
+              {requests.length}
+            </span>
+          )}
         </button>
 
         {/* User / Profile Link */}

@@ -4,13 +4,17 @@ Complete production-ready endpoints for Kitchen Staff & Display System.
 """
 
 from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from pydantic import BaseModel
+from sqlalchemy import select, desc
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_kitchen, get_optional_current_user
 from app.models.user import User, UserRole
 from app.models.order import OrderStatus
+from app.models.waiter_request import WaiterRequest
 from app.schemas.auth import UserResponse, TokenResponse, UserLogin as LoginRequest
 from app.schemas.menu import MenuItemCreate, MenuItemUpdate, MenuItemResponse
 from app.schemas.category import CategoryCreate, CategoryUpdate, CategoryResponse
@@ -21,6 +25,7 @@ from app.services.menu_service import MenuService
 from app.services.category_service import CategoryService
 from app.services.image_service import ImageUploadService
 from app.repositories.notification_repository import NotificationRepository
+from app.core.websocket import manager, handle_websocket_connection
 
 router = APIRouter()
 
@@ -354,3 +359,86 @@ async def delete_kitchen_notification(
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
     return {"status": "success", "message": "Notification deleted"}
+
+
+# -----------------------------------------------------------------------------
+# 8. KITCHEN WAITER CALLS / SERVICE REQUESTS & REAL-TIME WEBSOCKET
+# -----------------------------------------------------------------------------
+@router.get("/waiter-requests", summary="Get Kitchen Waiter Requests")
+async def get_kitchen_waiter_requests(
+    status: Optional[str] = Query("pending", description="Filter by status: pending, acknowledged, resolved, or all"),
+    current_user: User = Depends(get_current_kitchen),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve pending or historical waiter assistance requests for Kitchen display."""
+    stmt = select(WaiterRequest)
+    if status and status != "all":
+        stmt = stmt.where(WaiterRequest.status == status)
+    stmt = stmt.order_by(desc(WaiterRequest.created_at))
+    res = await db.execute(stmt)
+    return [r.to_dict() for r in res.scalars().all()]
+
+
+class WaiterStatusUpdate(BaseModel):
+    status: str = "acknowledged"
+
+
+@router.patch("/waiter-requests/{request_id}/status", summary="Update Waiter Request Status")
+async def update_kitchen_waiter_request_status(
+    request_id: str,
+    payload: WaiterStatusUpdate,
+    current_user: User = Depends(get_current_kitchen),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update status of a waiter assistance request (acknowledged or resolved)."""
+    valid_statuses = ["pending", "acknowledged", "resolved"]
+    if payload.status not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid status '{payload.status}'. Must be one of {valid_statuses}"
+        )
+
+    try:
+        req_uuid = uuid.UUID(request_id)
+        stmt = select(WaiterRequest).where((WaiterRequest.id == req_uuid) | (WaiterRequest.id == str(request_id)))
+    except Exception:
+        stmt = select(WaiterRequest).where(WaiterRequest.id == request_id)
+
+    res = await db.execute(stmt)
+    r = res.scalars().first()
+    if not r:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Waiter request not found")
+
+    r.status = payload.status
+    if payload.status == "resolved":
+        r.resolved_at = datetime.now(timezone.utc)
+        r.resolved_by = getattr(current_user, "email", None) or getattr(current_user, "full_name", None) or "kitchen"
+    elif payload.status == "acknowledged":
+        r.resolved_by = getattr(current_user, "email", None) or getattr(current_user, "full_name", None) or "kitchen"
+
+    await db.commit()
+    await db.refresh(r)
+
+    # Real-time WebSocket broadcast for status update
+    update_data = {
+        "event": "waiter_call_update",
+        **r.to_dict(),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await manager.broadcast_to_room("kitchen", update_data)
+    await manager.broadcast_to_role("kitchen", update_data)
+    if r.table_number:
+        await manager.broadcast_to_room(f"table_{r.table_number}", update_data)
+
+    return r.to_dict()
+
+
+@router.websocket("/ws")
+async def kitchen_ws(websocket: WebSocket):
+    """Kitchen WebSocket connection endpoint for real-time orders and waiter alerts."""
+    user_id = f"kitchen_{uuid.uuid4().hex[:8]}"
+    await handle_websocket_connection(
+        websocket=websocket,
+        user_id=user_id,
+        user_role="kitchen"
+    )

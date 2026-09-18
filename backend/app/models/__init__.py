@@ -15,6 +15,7 @@ from app.models.complaint import Complaint
 from app.models.notification import Notification
 from app.models.loyalty import LoyaltyPoints, LoyaltyReward
 from app.models.audit_log import AuditLog
+from app.models.waiter_request import WaiterRequest
 
 __all__ = [
     "Role",
@@ -39,4 +40,5 @@ __all__ = [
     "LoyaltyPoints",
     "LoyaltyReward",
     "AuditLog",
+    "WaiterRequest",
 ]

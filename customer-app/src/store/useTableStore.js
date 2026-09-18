@@ -6,27 +6,39 @@ export const useTableStore = create(
     (set) => ({
       tableNumber: 12, // Default table number for table-top device
       restaurantId: null,
-      restaurantName: 'Gourmet Bistro',
-      restaurantSlug: 'gourmet-bistro',
+      restaurantName: 'SmartServe Bistro',
+      restaurantSlug: 'smartserve-bistro',
       restaurantLogo: null,
       restaurantBanner: null,
+      restaurantAddress: null,
+      restaurantPhone: null,
+      restaurantEmail: null,
+      restaurantCurrency: 'INR',
+      restaurantOpeningTime: '10:00',
+      restaurantClosingTime: '23:00',
 
       setTableContext: (tableNum, restId, restName, restSlug) =>
-        set({
-          tableNumber: tableNum || 12,
-          restaurantId: restId || null,
-          restaurantName: restName || 'Gourmet Bistro',
-          restaurantSlug: restSlug || 'gourmet-bistro',
-        }),
+        set((state) => ({
+          tableNumber: tableNum || state.tableNumber || 12,
+          restaurantId: restId || state.restaurantId || null,
+          restaurantName: restName || state.restaurantName || 'SmartServe Bistro',
+          restaurantSlug: restSlug || state.restaurantSlug || 'smartserve-bistro',
+        })),
 
       setRestaurantDetails: (restObj) =>
-        set({
-          restaurantId: restObj.id,
-          restaurantName: restObj.name,
-          restaurantSlug: restObj.slug,
-          restaurantLogo: restObj.logo_url,
-          restaurantBanner: restObj.banner_url,
-        }),
+        set((state) => ({
+          restaurantId: restObj?.id || state.restaurantId,
+          restaurantName: restObj?.name || state.restaurantName,
+          restaurantSlug: restObj?.slug || state.restaurantSlug,
+          restaurantLogo: restObj?.logo_url !== undefined ? restObj.logo_url : state.restaurantLogo,
+          restaurantBanner: restObj?.banner_url !== undefined ? restObj.banner_url : state.restaurantBanner,
+          restaurantAddress: restObj?.address || restObj?.address_line1 || state.restaurantAddress,
+          restaurantPhone: restObj?.phone || state.restaurantPhone,
+          restaurantEmail: restObj?.email || state.restaurantEmail,
+          restaurantCurrency: restObj?.currency || state.restaurantCurrency || 'INR',
+          restaurantOpeningTime: restObj?.opening_time || state.restaurantOpeningTime,
+          restaurantClosingTime: restObj?.closing_time || state.restaurantClosingTime,
+        })),
     }),
     {
       name: 'smartserve_table',

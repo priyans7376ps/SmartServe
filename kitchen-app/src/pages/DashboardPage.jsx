@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, RefreshCw, AlertTriangle, Flame, ChefHat, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
+import { Search, Filter, RefreshCw, AlertTriangle, Flame, ChefHat, CheckCircle, XCircle, RotateCcw, Bell } from 'lucide-react';
 import KitchenStatsCard from '../components/ui/KitchenStatsCard';
 import OrderCard from '../components/ui/OrderCard';
 import OrderDetailsModal from '../components/ui/OrderDetailsModal';
 import Button from '../components/ui/Button';
 import { useKitchenOrderStore } from '../store/useKitchenOrderStore';
+import { useWaiterStore } from '../store/useWaiterStore';
 import { useWebSocketOrderHook } from '../hooks/useWebSocketOrderHook';
 import { useSoundNotification } from '../hooks/useSoundNotification';
 import { cn } from '../lib/cn';
@@ -30,6 +31,8 @@ export default function DashboardPage() {
     resetDemoOrders,
     isLoading,
   } = useKitchenOrderStore();
+
+  const { requests: waiterCalls, setIsModalOpen: openWaiterModal } = useWaiterStore();
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -137,6 +140,43 @@ export default function DashboardPage() {
 
         {/* Stats Header Grid */}
         <KitchenStatsCard />
+
+        {/* Active Waiter Call Banner */}
+        {waiterCalls && waiterCalls.length > 0 && (
+          <div className="p-4 bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-500/10 border-2 border-amber-500/60 rounded-3xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 font-black flex items-center justify-center shrink-0 shadow-glow-amber animate-bounce">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-black text-amber-400 uppercase tracking-wider">
+                    Customer Assistance Requested
+                  </h3>
+                  <span className="px-2 py-0.5 bg-amber-500/30 text-amber-300 text-[10px] font-black rounded-full border border-amber-500/40">
+                    {waiterCalls.length} Active Call{waiterCalls.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 mt-0.5">
+                  Tables calling for server assistance:{' '}
+                  <span className="font-extrabold text-white">
+                    {waiterCalls.map((r) => `Table #${r.table_number}`).join(', ')}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Bell}
+                onClick={() => openWaiterModal(true)}
+              >
+                View & Acknowledge
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Search & Quick Filters Bar */}

@@ -15,10 +15,12 @@ import ProfilePage from './pages/ProfilePage';
 import { NotFoundPage } from './pages/ErrorPages';
 import { useTableStore } from './store/useTableStore';
 import { useSettingsStore } from './store/useSettingsStore';
+import { useRestaurant } from './hooks/useRestaurant';
 
 function TableInitializer() {
   const [searchParams] = useSearchParams();
   const setTableContext = useTableStore((state) => state.setTableContext);
+  useRestaurant(); // Sync live restaurant details on application load
 
   useEffect(() => {
     const tableNum = searchParams.get('table') || searchParams.get('t');

@@ -9,11 +9,18 @@ import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import Navbar from './components/ui/Navbar';
 import Sidebar from './components/ui/Sidebar';
+import WaiterAlertToast from './components/ui/WaiterAlertToast';
+import WaiterRequestsModal from './components/ui/WaiterRequestsModal';
+import { useWaiterRequests } from './hooks/useWaiterRequests';
 
 function KitchenLayout() {
+  useWaiterRequests();
+
   return (
     <div className="min-h-screen bg-[#0b0f17] text-slate-100 flex flex-col">
       <Navbar />
+      <WaiterAlertToast />
+      <WaiterRequestsModal />
       <div className="flex-1 flex flex-col md:flex-row max-w-7xl w-full mx-auto">
         <Sidebar />
         <main className="flex-1 p-4 sm:p-6 overflow-x-hidden">

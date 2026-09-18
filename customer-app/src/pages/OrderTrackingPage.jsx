@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { RefreshCw, Bell, Utensils, BellOff } from 'lucide-react';
 import { useOrderTracking } from '../hooks/useOrderTracking';
 import { useTableStore } from '../store/useTableStore';
+import { waiterApi } from '../api/waiter.api';
 import OrderTimeline from '../components/ui/OrderTimeline';
 import Button from '../components/ui/Button';
 import Toast from '../components/ui/Toast';
@@ -25,7 +26,11 @@ export default function OrderTrackingPage() {
   const { tableNumber, restaurantName } = useTableStore();
   const [activeOrder, setActiveOrder] = useState(null);
   const [waiterCalled, setWaiterCalled] = useState(false);
+  const [waiterCalling, setWaiterCalling] = useState(false);
+  const [waiterRequestId, setWaiterRequestId] = useState(() => localStorage.getItem('active_waiter_request_id') || null);
+  const [waiterStatus, setWaiterStatus] = useState(() => localStorage.getItem('active_waiter_status') || null);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('active_order');
@@ -34,24 +39,81 @@ export default function OrderTrackingPage() {
     }
   }, []);
 
+  // Poll waiter request status if active
+  useEffect(() => {
+    if (!waiterRequestId || waiterStatus === 'resolved') return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await waiterApi.getCallStatus(waiterRequestId);
+        if (!isMounted) return;
+        if (res.status === 'acknowledged') {
+          setWaiterStatus('acknowledged');
+          localStorage.setItem('active_waiter_status', 'acknowledged');
+        } else if (res.status === 'resolved') {
+          setWaiterStatus('resolved');
+          setWaiterCalled(false);
+          setWaiterRequestId(null);
+          localStorage.removeItem('active_waiter_request_id');
+          localStorage.removeItem('active_waiter_status');
+        }
+      } catch (err) {
+        // Silent poll error
+      }
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [waiterRequestId, waiterStatus]);
+
   const orderId = searchParams.get('order_id') || activeOrder?.order_id;
   const { tracking, orderDetails, isLoading, isError } = useOrderTracking(orderId, 4000);
 
   const currentStatus = tracking?.status || activeOrder?.status || 'pending';
   const meta = STATUS_META[currentStatus] || STATUS_META.pending;
 
-  const handleCallWaiter = () => {
-    if (waiterCalled) return;
-    setWaiterCalled(true);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 4000);
+  const currentTable = tracking?.table_number || tableNumber || '1';
+
+  const handleCallWaiter = async () => {
+    if (waiterCalling || waiterCalled || (waiterStatus && waiterStatus !== 'resolved')) return;
+
+    setWaiterCalling(true);
+    try {
+      const res = await waiterApi.callWaiter({
+        table_number: currentTable,
+        notes: activeOrder?.order_id ? `Order #${activeOrder.order_id}` : ''
+      });
+      const reqId = res.id || res.data?.id;
+      if (reqId) {
+        setWaiterRequestId(reqId);
+        localStorage.setItem('active_waiter_request_id', reqId);
+      }
+      setWaiterStatus('pending');
+      localStorage.setItem('active_waiter_status', 'pending');
+      setWaiterCalled(true);
+      setToastMessage(`Staff notified! A waiter will arrive at Table ${currentTable} shortly.`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    } catch (err) {
+      console.error('Call waiter error:', err);
+      // Even if network blips, show helpful state
+      setWaiterCalled(true);
+      setToastMessage(`Staff notified! A waiter will arrive at Table ${currentTable} shortly.`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    } finally {
+      setWaiterCalling(false);
+    }
   };
 
   return (
     <motion.div {...pageVariants} className="max-w-4xl mx-auto space-y-6 pb-12 relative">
       <Toast
         isVisible={showToast}
-        message={`Staff notified! A waiter will arrive at Table ${tableNumber} shortly.`}
+        message={toastMessage || `Staff notified! A waiter will arrive at Table ${currentTable} shortly.`}
         type="success"
         onClose={() => setShowToast(false)}
       />
@@ -70,13 +132,19 @@ export default function OrderTrackingPage() {
         </div>
 
         <Button
-          variant={waiterCalled ? 'secondary' : 'primary'}
-          icon={waiterCalled ? BellOff : Bell}
+          variant={(waiterCalled || waiterStatus) ? 'secondary' : 'primary'}
+          icon={(waiterCalled || waiterStatus) ? BellOff : Bell}
           onClick={handleCallWaiter}
-          disabled={waiterCalled}
-          aria-label={waiterCalled ? 'Waiter already notified' : 'Call waiter to your table'}
+          disabled={waiterCalling || (waiterStatus && waiterStatus !== 'resolved')}
+          aria-label={(waiterCalled || waiterStatus) ? 'Waiter already notified' : 'Call waiter to your table'}
         >
-          {waiterCalled ? 'Waiter Notified' : 'Call Waiter'}
+          {waiterCalling
+            ? 'Calling Waiter...'
+            : waiterStatus === 'acknowledged'
+            ? 'Waiter On The Way'
+            : (waiterCalled || waiterStatus === 'pending')
+            ? 'Waiter Notified'
+            : 'Call Waiter'}
         </Button>
       </div>
 
