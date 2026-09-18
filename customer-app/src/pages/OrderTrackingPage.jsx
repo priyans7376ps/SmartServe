@@ -84,9 +84,12 @@ export default function OrderTrackingPage() {
     try {
       const res = await waiterApi.callWaiter({
         table_number: currentTable,
-        notes: activeOrder?.order_id ? `Order #${activeOrder.order_id}` : ''
+        table_id: tracking?.table_id || null,
+        restaurant_id: tracking?.restaurant_id || null,
+        notes: activeOrder?.order_id ? `Order #${activeOrder.order_id}` : '',
+        request_type: 'CALL_WAITER',
       });
-      const reqId = res.id || res.data?.id;
+      const reqId = res?.id || res?.data?.id || res?.request_id;
       if (reqId) {
         setWaiterRequestId(reqId);
         localStorage.setItem('active_waiter_request_id', reqId);
@@ -94,14 +97,12 @@ export default function OrderTrackingPage() {
       setWaiterStatus('pending');
       localStorage.setItem('active_waiter_status', 'pending');
       setWaiterCalled(true);
-      setToastMessage(`Staff notified! A waiter will arrive at Table ${currentTable} shortly.`);
+      setToastMessage(res?.message || `Staff notified! A waiter will arrive at Table ${currentTable} shortly.`);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 5000);
     } catch (err) {
       console.error('Call waiter error:', err);
-      // Even if network blips, show helpful state
-      setWaiterCalled(true);
-      setToastMessage(`Staff notified! A waiter will arrive at Table ${currentTable} shortly.`);
+      setToastMessage('Could not notify staff. Please try again.');
       setShowToast(true);
       setTimeout(() => setShowToast(false), 5000);
     } finally {

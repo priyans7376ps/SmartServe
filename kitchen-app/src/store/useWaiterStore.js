@@ -41,6 +41,7 @@ export function playWaiterChime() {
 
 export const useWaiterStore = create((set, get) => ({
   requests: [],
+  allRequests: [],
   activeAlert: null,
   isModalOpen: false,
   isLoading: false,
@@ -51,42 +52,66 @@ export const useWaiterStore = create((set, get) => ({
   fetchRequests: async () => {
     try {
       set({ isLoading: true });
-      // Fetch both pending and acknowledged requests
-      const data = await waiterApi.getWaiterRequests('all');
-      const activeOnly = (Array.isArray(data) ? data : []).filter(
-        (r) => r.status === 'pending' || r.status === 'acknowledged'
+      const res = await waiterApi.getWaiterRequests('all');
+      const rawList = Array.isArray(res)
+        ? res
+        : (Array.isArray(res?.data) ? res.data : (res?.requests || []));
+
+      const normalized = rawList.map((r) => ({
+        ...r,
+        id: r.id || r.request_id,
+        table_number: r.table_number || r.table_id || '1',
+        status: (r.status || 'pending').toLowerCase(),
+        created_at: r.created_at || new Date().toISOString(),
+      }));
+
+      // Active requests: pending, open, acknowledged
+      const activeOnly = normalized.filter(
+        (r) => r.status === 'pending' || r.status === 'acknowledged' || r.status === 'open'
       );
-      set({ requests: activeOnly, isLoading: false });
+      set({ requests: activeOnly, allRequests: normalized, isLoading: false });
     } catch (err) {
       set({ isLoading: false });
     }
   },
 
   handleIncomingCall: (callData) => {
-    if (!callData || !callData.id) return;
+    if (!callData) return;
+    const payload = callData.data || callData;
+    const reqId = payload.id || payload.request_id;
+    if (!reqId) return;
+
+    const normalizedStatus = (payload.status || 'pending').toLowerCase();
+    const item = {
+      ...payload,
+      id: reqId,
+      status: normalizedStatus,
+      table_number: payload.table_number || payload.table_id || '1',
+      created_at: payload.created_at || new Date().toISOString(),
+    };
+
     const current = get().requests;
-    const existingIndex = current.findIndex((r) => r.id === callData.id);
+    const existingIndex = current.findIndex((r) => (r.id || r.request_id) === reqId);
 
     let updatedList;
     if (existingIndex >= 0) {
-      // If already marked resolved, remove from active list
-      if (callData.status === 'resolved' || callData.status === 'cancelled') {
-        updatedList = current.filter((r) => r.id !== callData.id);
+      if (normalizedStatus === 'resolved' || normalizedStatus === 'cancelled') {
+        updatedList = current.filter((r) => (r.id || r.request_id) !== reqId);
       } else {
-        updatedList = current.map((r) => (r.id === callData.id ? { ...r, ...callData } : r));
+        updatedList = current.map((r) => ((r.id || r.request_id) === reqId ? { ...r, ...item } : r));
       }
     } else {
-      if (callData.status !== 'resolved' && callData.status !== 'cancelled') {
-        updatedList = [callData, ...current];
+      if (normalizedStatus !== 'resolved' && normalizedStatus !== 'cancelled') {
+        updatedList = [item, ...current];
       } else {
         updatedList = current;
       }
     }
 
-    // Play chime and trigger visible toast alert if pending
-    if (callData.status === 'pending') {
+    // Play chime and trigger visible toast alert if pending or open
+    if (normalizedStatus === 'pending' || normalizedStatus === 'open') {
       playWaiterChime();
-      set({ requests: updatedList, activeAlert: callData });
+      set({ requests: updatedList, activeAlert: item });
     } else {
       set({ requests: updatedList });
     }
@@ -94,7 +119,8 @@ export const useWaiterStore = create((set, get) => ({
 
   acknowledgeRequest: async (requestId) => {
     try {
-      const updated = await waiterApi.updateRequestStatus(requestId, 'acknowledged');
+      const res = await waiterApi.updateRequestStatus(requestId, 'acknowledged');
+      const updated = res?.data || res;
       get().handleIncomingCall(updated);
     } catch (err) {
       console.error('Failed to acknowledge waiter request:', err);
@@ -103,7 +129,8 @@ export const useWaiterStore = create((set, get) => ({
 
   resolveRequest: async (requestId) => {
     try {
-      const updated = await waiterApi.updateRequestStatus(requestId, 'resolved');
+      const res = await waiterApi.updateRequestStatus(requestId, 'resolved');
+      const updated = res?.data || res;
       get().handleIncomingCall(updated);
       if (get().activeAlert?.id === requestId) {
         set({ activeAlert: null });

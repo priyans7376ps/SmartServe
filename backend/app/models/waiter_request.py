@@ -39,7 +39,9 @@ class WaiterRequest(BaseModel):
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
+            "table_id": str(self.table_number),
             "table_number": str(self.table_number),
+            "restaurant_id": str(self.restaurant_id) if self.restaurant_id else None,
             "request_type": self.request_type,
             "status": self.status,
             "notes": self.notes or "",

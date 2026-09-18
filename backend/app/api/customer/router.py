@@ -655,6 +655,8 @@ async def get_customer_restaurant_settings(db: AsyncSession = Depends(get_db)):
 # -----------------------------------------------------------------------------
 class CallWaiterRequest(BaseModel):
     table_number: Any
+    table_id: Optional[Any] = None
+    restaurant_id: Optional[uuid.UUID] = None
     notes: Optional[str] = None
     request_type: Optional[str] = "CALL_WAITER"
 
@@ -669,12 +671,25 @@ async def customer_call_waiter(
     Persists the request in PostgreSQL and broadcasts real-time alert to Kitchen KDS.
     """
     from app.models.waiter_request import WaiterRequest
+    from app.models.restaurant import Restaurant
     from app.core.websocket import manager
 
     table_str = str(payload.table_number).strip() or "1"
+    
+    # Resolve restaurant_id: use provided ID or find default from restaurants table
+    rest_id = payload.restaurant_id
+    if not rest_id:
+        try:
+            r_stmt = select(Restaurant.id).limit(1)
+            r_res = await db.execute(r_stmt)
+            rest_id = r_res.scalar_one_or_none()
+        except Exception:
+            rest_id = None
+
     waiter_req = WaiterRequest(
         id=uuid.uuid4(),
         table_number=table_str,
+        restaurant_id=rest_id,
         request_type=payload.request_type or "CALL_WAITER",
         status="pending",
         notes=payload.notes or "",
@@ -683,16 +698,25 @@ async def customer_call_waiter(
     await db.commit()
     await db.refresh(waiter_req)
 
+    req_dict = waiter_req.to_dict()
+    if payload.table_id:
+        req_dict["table_id"] = str(payload.table_id)
+
     # Broadcast real-time notification to Kitchen
     event_data = {
         "event": "waiter_call",
-        "type": "CALL_WAITER",
+        "type": "WAITER_REQUEST",
         "request_id": str(waiter_req.id),
         "id": str(waiter_req.id),
+        "table_id": req_dict.get("table_id", table_str),
         "table_number": waiter_req.table_number,
+        "restaurant_id": str(rest_id) if rest_id else None,
+        "request_type": waiter_req.request_type,
         "status": waiter_req.status,
         "notes": waiter_req.notes,
         "created_at": waiter_req.created_at.isoformat() if waiter_req.created_at else None,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "data": req_dict,
     }
     try:
         await manager.broadcast_to_room("kitchen", event_data)
@@ -701,8 +725,8 @@ async def customer_call_waiter(
     except Exception:
         pass
 
-    req_dict = waiter_req.to_dict()
     return {
+        "success": True,
         "status": "success",
         "message": f"Staff notified! A waiter will arrive at Table #{table_str} shortly.",
         "data": req_dict,

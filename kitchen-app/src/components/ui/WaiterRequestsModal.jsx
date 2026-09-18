@@ -62,7 +62,7 @@ export default function WaiterRequestsModal() {
                         <span className="font-extrabold text-white text-sm">Table #{req.table_number}</span>
                         <span
                           className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                            req.status === 'pending'
+                            req.status === 'pending' || req.status === 'open'
                               ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 animate-pulse'
                               : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                           }`}
@@ -86,7 +86,7 @@ export default function WaiterRequestsModal() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
-                    {req.status === 'pending' && (
+                    {(req.status === 'pending' || req.status === 'open') && (
                       <button
                         onClick={() => acknowledgeRequest(req.id)}
                         className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shadow-sm"

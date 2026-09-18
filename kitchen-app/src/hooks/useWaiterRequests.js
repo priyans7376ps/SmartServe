@@ -48,8 +48,16 @@ export function useWaiterRequests() {
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.event === 'waiter_call' || data.event === 'waiter_call_update') {
-              handleIncomingCall(data);
+            const isWaiterEvent =
+              data.event === 'waiter_call' ||
+              data.event === 'waiter_call_update' ||
+              data.type === 'waiter_call' ||
+              data.type === 'waiter_call_update' ||
+              data.type === 'WAITER_REQUEST' ||
+              data.event === 'WAITER_REQUEST';
+
+            if (isWaiterEvent) {
+              handleIncomingCall(data.data || data);
             }
           } catch (e) {
             // Ignore non-JSON messages

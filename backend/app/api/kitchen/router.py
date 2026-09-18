@@ -367,16 +367,27 @@ async def delete_kitchen_notification(
 @router.get("/waiter-requests", summary="Get Kitchen Waiter Requests")
 async def get_kitchen_waiter_requests(
     status: Optional[str] = Query("pending", description="Filter by status: pending, acknowledged, resolved, or all"),
+    restaurant_id: Optional[uuid.UUID] = Query(None, description="Optional restaurant ID filter"),
     current_user: User = Depends(get_current_kitchen),
     db: AsyncSession = Depends(get_db)
 ):
     """Retrieve pending or historical waiter assistance requests for Kitchen display."""
+    from sqlalchemy import func, or_
     stmt = select(WaiterRequest)
-    if status and status != "all":
-        stmt = stmt.where(WaiterRequest.status == status)
+    if status and status.lower() != "all":
+        stmt = stmt.where(func.lower(WaiterRequest.status) == status.lower())
+    if restaurant_id:
+        stmt = stmt.where(
+            or_(WaiterRequest.restaurant_id == restaurant_id, WaiterRequest.restaurant_id.is_(None))
+        )
     stmt = stmt.order_by(desc(WaiterRequest.created_at))
     res = await db.execute(stmt)
-    return [r.to_dict() for r in res.scalars().all()]
+    records = [r.to_dict() for r in res.scalars().all()]
+    return {
+        "success": True,
+        "data": records,
+        "total": len(records)
+    }
 
 
 class WaiterStatusUpdate(BaseModel):
