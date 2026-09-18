@@ -25,9 +25,18 @@ export const useAuthStore = create((set, get) => ({
 
   guestLogin: async (sessionId = null) => {
     set({ isLoading: true, error: null });
+
     try {
-      const data = await authApi.guestLogin(sessionId);
+      // Always send session_id as a string
+      const normalizedSessionId =
+        sessionId !== null && sessionId !== undefined
+          ? String(sessionId)
+          : null;
+
+      const data = await authApi.guestLogin(normalizedSessionId);
+
       const { access_token, session_id } = data;
+
       const guestUser = {
         id: session_id,
         full_name: 'Guest Customer',
@@ -35,13 +44,29 @@ export const useAuthStore = create((set, get) => ({
         role: 'customer',
         is_guest: true,
       };
+
       get().setAuth(guestUser, access_token, null);
+
       set({ isLoading: false });
+
       return guestUser;
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Guest session initialization failed.';
-      set({ error: msg, isLoading: false });
-      throw new Error(msg);
+      const msg =
+        err.response?.data?.detail ||
+        'Guest session initialization failed.';
+
+      set({
+        error: Array.isArray(msg)
+          ? msg[0]?.msg || 'Guest session initialization failed.'
+          : msg,
+        isLoading: false,
+      });
+
+      throw new Error(
+        Array.isArray(msg)
+          ? msg[0]?.msg || 'Guest session initialization failed.'
+          : msg
+      );
     }
   },
 

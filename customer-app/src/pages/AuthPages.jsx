@@ -8,7 +8,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { cn } from '../lib/cn';
 import { pageVariants, scaleIn, springs } from '../lib/motion';
-import { getGuestSessionId } from '../utils/session';
+import { getOrCreateSessionId } from '../utils/session';
 
 /* ── TAB BUTTON ──────────────────────────────────────── */
 function Tab({ active, onClick, children }) {
@@ -55,7 +55,7 @@ export default function AuthPages() {
     setFormError('');
 
     try {
-      const sessionId = getGuestSessionId();
+      const sessionId = getOrCreateSessionId();
 
       await guestLogin(sessionId);
 
