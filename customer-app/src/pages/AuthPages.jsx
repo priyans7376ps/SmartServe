@@ -8,6 +8,7 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { cn } from '../lib/cn';
 import { pageVariants, scaleIn, springs } from '../lib/motion';
+import { getGuestSessionId } from '../utils/session';
 
 /* ── TAB BUTTON ──────────────────────────────────────── */
 function Tab({ active, onClick, children }) {
@@ -40,9 +41,9 @@ export default function AuthPages() {
   const { login, signup, guestLogin, isLoading, error } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState('guest');
-  const [formData, setFormData]   = useState({ email: '', password: '', full_name: '', phone: '' });
-  const [otpSent, setOtpSent]     = useState(false);
-  const [otpCode, setOtpCode]     = useState('');
+  const [formData, setFormData] = useState({ email: '', password: '', full_name: '', phone: '' });
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
   const [formError, setFormError] = useState('');
 
   const handleChange = (e) =>
@@ -52,8 +53,12 @@ export default function AuthPages() {
 
   const handleGuestSubmit = async () => {
     setFormError('');
+
     try {
-      await guestLogin(tableNumber);
+      const sessionId = getGuestSessionId();
+
+      await guestLogin(sessionId);
+
       navigate('/menu');
     } catch (err) {
       setFormError(err.message || 'Guest login failed');
@@ -111,8 +116,8 @@ export default function AuthPages() {
         role="tablist"
         aria-label="Authentication options"
       >
-        <Tab active={activeTab === 'guest'}  onClick={() => switchTab('guest')}>Guest</Tab>
-        <Tab active={activeTab === 'login'}  onClick={() => switchTab('login')}>Sign In</Tab>
+        <Tab active={activeTab === 'guest'} onClick={() => switchTab('guest')}>Guest</Tab>
+        <Tab active={activeTab === 'login'} onClick={() => switchTab('login')}>Sign In</Tab>
         <Tab active={activeTab === 'signup'} onClick={() => switchTab('signup')}>Sign Up</Tab>
       </div>
 
