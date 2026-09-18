@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any, Tuple
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time
 import uuid
 import csv
 import io
@@ -674,14 +674,14 @@ class AdminService:
             rest = Restaurant(
                 id=uuid.uuid4(),
                 name="SmartServe Bistro",
+                slug="smartserve-bistro",
                 email="admin@smartserve.com",
                 phone="+91 98765 43210",
-                address="123 Innovation Way, Tech Park",
+                address_line1="123 Innovation Way, Tech Park",
                 tax_rate=0.05,
                 currency="INR",
-                timezone="Asia/Kolkata",
-                opening_time="09:00",
-                closing_time="23:00",
+                opening_time=time(9, 0),
+                closing_time=time(23, 0),
                 is_open=True
             )
             self.db.add(rest)

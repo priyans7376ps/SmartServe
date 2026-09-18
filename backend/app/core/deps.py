@@ -4,6 +4,7 @@ from typing import AsyncGenerator, List, Callable, Optional, Union
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.config import settings
 from app.database.connection import async_session_factory
 from app.core.security import decode_token
 from app.repositories.user_repository import UserRepository
@@ -43,14 +44,14 @@ def _make_env_principal(sub: str, role_str: str) -> EnvPrincipal:
     if sub == _ENV_ADMIN_SUB:
         return EnvPrincipal(
             role=UserRole.ADMIN,
-            email="admin@smartserve.env",
-            full_name="Admin (ENV)",
+            email=settings.ADMIN_EMAIL or "admin@smartserve.env",
+            full_name="Admin",
         )
     if sub == _ENV_KITCHEN_SUB:
         return EnvPrincipal(
             role=UserRole.KITCHEN,
-            email="kitchen@smartserve.env",
-            full_name="Kitchen Staff (ENV)",
+            email=settings.KITCHEN_EMAIL or "kitchen@smartserve.env",
+            full_name="Kitchen Staff",
         )
     # Fallback — should not reach here in normal flow
     return EnvPrincipal(

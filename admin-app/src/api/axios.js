@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
@@ -9,10 +9,11 @@ const api = axios.create({
   },
 });
 
-// Request interceptor: attach Bearer token
+// Request interceptor: attach Admin Bearer token
+// Strict: reads only admin_access_token — no cross-panel fallback
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('admin_access_token') || localStorage.getItem('access_token');
+    const token = localStorage.getItem('admin_access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -22,13 +23,14 @@ api.interceptors.request.use(
 );
 
 // Response interceptor: handle 401 & token refresh
+// Strict: reads/writes only admin_* keys — no cross-panel contamination
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      const refreshToken = localStorage.getItem('admin_refresh_token') || localStorage.getItem('refresh_token');
+      const refreshToken = localStorage.getItem('admin_refresh_token');
       if (refreshToken) {
         try {
           const res = await axios.post(API_BASE_URL + '/api/v1/auth/refresh', {
@@ -36,22 +38,20 @@ api.interceptors.response.use(
           });
           const { access_token, refresh_token: newRefresh } = res.data;
           localStorage.setItem('admin_access_token', access_token);
-          localStorage.setItem('access_token', access_token);
           if (newRefresh) {
             localStorage.setItem('admin_refresh_token', newRefresh);
-            localStorage.setItem('refresh_token', newRefresh);
           }
           originalRequest.headers.Authorization = `Bearer ${access_token}`;
           return api(originalRequest);
         } catch (refreshErr) {
+          // Refresh failed — clear admin keys and redirect to login
           localStorage.removeItem('admin_access_token');
           localStorage.removeItem('admin_refresh_token');
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
           localStorage.removeItem('admin_user');
           window.location.href = '/login';
         }
       } else {
+        // No refresh token available — clear admin session
         localStorage.removeItem('admin_access_token');
         localStorage.removeItem('admin_user');
       }

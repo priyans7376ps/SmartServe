@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, Union
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.deps import get_db, get_current_user
+from app.core.deps import get_db, get_current_user, EnvPrincipal
 from app.services.auth_service import AuthService
 from app.schemas.auth import UserSignup, UserLogin, TokenResponse, RefreshTokenRequest, UserResponse, GuestLoginRequest
 from app.models.user import User
@@ -39,7 +39,8 @@ async def guest_login(
     return await service.guest_login(table_id=table_id, restaurant_id=restaurant_id, device_id=device_id)
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_profile(current_user: User = Depends(get_current_user)):
-    """Get profile of current authenticated user."""
+async def get_current_user_profile(
+    current_user: Union[User, EnvPrincipal] = Depends(get_current_user)
+):
+    """Get profile of current authenticated user. Supports both DB users and ENV principals."""
     return UserResponse.model_validate(current_user)
-
