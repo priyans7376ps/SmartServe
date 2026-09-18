@@ -23,3 +23,14 @@ api_v1_router.include_router(category_router, prefix="/categories", tags=["Categ
 api_v1_router.include_router(menu_router, prefix="/menu", tags=["Menu Management"])
 api_v1_router.include_router(media_router, prefix="/media", tags=["Media Uploads"])
 api_v1_router.include_router(payments_router, prefix="/payments", tags=["Payments & Razorpay"])
+
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.deps import get_db
+
+@api_v1_router.get("/settings", tags=["Public Settings"], summary="Public restaurant settings")
+async def get_public_settings_v1(db: AsyncSession = Depends(get_db)):
+    from app.services.admin_service import AdminService
+    service = AdminService(db)
+    rest = await service.get_restaurant_settings()
+    return rest.to_dict()

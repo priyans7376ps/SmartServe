@@ -24,8 +24,11 @@ export function useWaiterRequests() {
       if (!isMountedRef.current) return;
 
       const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const WS_BASE = (import.meta.env.VITE_WS_URL || '').replace(/\/$/, '');
       let wsUrl = '';
-      if (API_BASE.startsWith('https://')) {
+      if (WS_BASE) {
+        wsUrl = WS_BASE.endsWith('/ws') ? WS_BASE : `${WS_BASE}/api/v1/kitchen/ws`;
+      } else if (API_BASE.startsWith('https://')) {
         wsUrl = API_BASE.replace('https://', 'wss://') + '/api/v1/kitchen/ws';
       } else if (API_BASE.startsWith('http://')) {
         wsUrl = API_BASE.replace('http://', 'ws://') + '/api/v1/kitchen/ws';

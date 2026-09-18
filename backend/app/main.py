@@ -68,6 +68,29 @@ from fastapi.staticfiles import StaticFiles
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
+from fastapi import WebSocket, Depends
+from app.database.connection import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
+@app.get("/settings", include_in_schema=False)
+async def root_settings(db: AsyncSession = Depends(get_db)):
+    from app.services.admin_service import AdminService
+    service = AdminService(db)
+    rest = await service.get_restaurant_settings()
+    return rest.to_dict()
+
+@app.websocket("/ws")
+@app.websocket("/api/v1/ws")
+async def root_websocket(websocket: WebSocket):
+    from app.core.websocket import handle_websocket_connection
+    import uuid
+    user_id = f"kitchen_{uuid.uuid4().hex[:8]}"
+    await handle_websocket_connection(
+        websocket=websocket,
+        user_id=user_id,
+        user_role="kitchen"
+    )
+
 
 from app.database.connection import engine, async_session_factory
 from app.seed import seed_menu_data

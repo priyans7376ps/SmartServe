@@ -639,6 +639,8 @@ async def remove_favorite_placeholder(item_id: uuid.UUID):
 # 18. PUBLIC RESTAURANT SETTINGS (CUSTOMER-SAFE)
 # -----------------------------------------------------------------------------
 @router.get("/restaurant", summary="Get public restaurant details for customers")
+@router.get("/settings", summary="Get public restaurant details for customers (alias)")
+@router.get("/restaurant/settings", summary="Get public restaurant details for customers (alias)")
 async def get_customer_restaurant_settings(db: AsyncSession = Depends(get_db)):
     """
     Returns public restaurant configuration for customer app display.
