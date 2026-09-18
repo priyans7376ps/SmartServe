@@ -4,6 +4,7 @@ Complete RESTful customer endpoints covering all 17 customer modules.
 """
 
 from typing import Optional, List, Dict, Any
+from datetime import datetime, timezone
 import uuid
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header

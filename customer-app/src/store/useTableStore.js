@@ -6,8 +6,8 @@ export const useTableStore = create(
     (set) => ({
       tableNumber: 12, // Default table number for table-top device
       restaurantId: null,
-      restaurantName: 'SmartServe Bistro',
-      restaurantSlug: 'smartserve-bistro',
+      restaurantName: '',
+      restaurantSlug: 'smartserve',
       restaurantLogo: null,
       restaurantBanner: null,
       restaurantAddress: null,
@@ -21,8 +21,8 @@ export const useTableStore = create(
         set((state) => ({
           tableNumber: tableNum || state.tableNumber || 12,
           restaurantId: restId || state.restaurantId || null,
-          restaurantName: restName || state.restaurantName || 'SmartServe Bistro',
-          restaurantSlug: restSlug || state.restaurantSlug || 'smartserve-bistro',
+          restaurantName: restName || state.restaurantName || '',
+          restaurantSlug: restSlug || state.restaurantSlug || 'smartserve',
         })),
 
       setRestaurantDetails: (restObj) =>

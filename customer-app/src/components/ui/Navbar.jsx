@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShoppingBag, Search, Sun, Moon, Utensils, User, SlidersHorizontal } from 'lucide-react';
+import { ShoppingBag, Search, Sun, Moon, Utensils, User, SlidersHorizontal, Bell, Check } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useCartStore } from '../../store/useCartStore';
 import { useTableStore } from '../../store/useTableStore';
 import { useSettingsStore } from '../../store/useSettingsStore';
+import { waiterApi } from '../../api/waiter.api';
 import { cn } from '../../lib/cn';
 import { springs } from '../../lib/motion';
 
@@ -35,10 +36,32 @@ export default function Navbar({ onOpenSearch, onOpenFilter, onOpenCart }) {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuthStore();
   const { getItemCount } = useCartStore();
-  const { tableNumber, restaurantName } = useTableStore();
+  const { tableNumber, restaurantName, restaurantLogo, restaurantId } = useTableStore();
   const { darkMode, toggleDarkMode } = useSettingsStore();
 
+  const [isCallingWaiter, setIsCallingWaiter] = useState(false);
+  const [waiterNotified, setWaiterNotified] = useState(false);
+
   const itemCount = getItemCount();
+
+  const handleCallWaiter = async () => {
+    if (!tableNumber || isCallingWaiter || waiterNotified) return;
+    setIsCallingWaiter(true);
+    try {
+      await waiterApi.callWaiter({
+        table_number: tableNumber,
+        restaurant_id: restaurantId || null,
+        request_type: 'CALL_WAITER',
+        notes: `Quick call from Table #${tableNumber}`,
+      });
+      setWaiterNotified(true);
+      setTimeout(() => setWaiterNotified(false), 8000);
+    } catch (err) {
+      console.error('Failed to call waiter:', err);
+    } finally {
+      setIsCallingWaiter(false);
+    }
+  };
 
   return (
     <header
@@ -49,30 +72,65 @@ export default function Navbar({ onOpenSearch, onOpenFilter, onOpenCart }) {
 
         {/* ── BRAND ──────────────────────────────── */}
         <div className="flex items-center gap-3 shrink-0">
-          <Link to="/" className="flex items-center gap-2.5 group" aria-label="SmartServe home">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 flex items-center justify-center text-white shadow-glow-sm group-hover:shadow-glow transition-shadow duration-200">
-              <Utensils className="w-4.5 h-4.5 sm:w-5 sm:h-5" aria-hidden="true" />
-            </div>
-            <div className="leading-none">
-              <span className="block font-display font-extrabold text-subtitle gradient-brand">
-                SmartServe
-              </span>
-              {restaurantName && (
-                <span className="block text-label text-ink-muted mt-0.5 max-w-[120px] truncate">
-                  {restaurantName}
-                </span>
+          <Link to="/" className="flex items-center gap-2.5 group" aria-label="Restaurant home">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 flex items-center justify-center text-white shadow-glow-sm group-hover:shadow-glow transition-shadow duration-200 overflow-hidden shrink-0">
+              {restaurantLogo ? (
+                <img
+                  src={restaurantLogo}
+                  alt={restaurantName || 'Logo'}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : (
+                <Utensils className="w-4.5 h-4.5 sm:w-5 sm:h-5" aria-hidden="true" />
               )}
+            </div>
+            <div className="leading-tight">
+              <span className="block font-display font-extrabold text-subtitle gradient-brand max-w-[150px] sm:max-w-[220px] truncate">
+                {restaurantName || 'SmartServe'}
+              </span>
+              <span className="block text-label text-ink-muted text-[11px] truncate">
+                Digital Menu
+              </span>
             </div>
           </Link>
 
-          {/* Table chip */}
+          {/* Table chip & Call Waiter button */}
           {tableNumber && (
-            <div
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full border border-brand-200 dark:border-brand-800/50 bg-brand-50/80 dark:bg-brand-950/30 text-brand-700 dark:text-brand-400 text-label font-bold"
-              aria-label={`Table ${tableNumber}`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-success-500 animate-pulse-ring" aria-hidden="true" />
-              Table {tableNumber}
+            <div className="hidden sm:flex items-center gap-2">
+              <div
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-brand-200 dark:border-brand-800/50 bg-brand-50/80 dark:bg-brand-950/30 text-brand-700 dark:text-brand-400 text-label font-bold"
+                aria-label={`Table ${tableNumber}`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-success-500 animate-pulse-ring" aria-hidden="true" />
+                Table {tableNumber}
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCallWaiter}
+                disabled={isCallingWaiter || waiterNotified}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold transition-all border shadow-sm',
+                  waiterNotified
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/30 text-amber-700 dark:text-amber-400'
+                )}
+                title="Call Waiter"
+                aria-label="Call waiter to table"
+              >
+                {waiterNotified ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Notified</span>
+                  </>
+                ) : (
+                  <>
+                    <Bell className="w-3.5 h-3.5 animate-bounce" />
+                    <span>{isCallingWaiter ? 'Calling...' : 'Call Waiter'}</span>
+                  </>
+                )}
+              </motion.button>
             </div>
           )}
         </div>
@@ -96,6 +154,17 @@ export default function Navbar({ onOpenSearch, onOpenFilter, onOpenCart }) {
 
         {/* ── ACTIONS ────────────────────────────── */}
         <div className="flex items-center gap-1 sm:gap-2">
+          {/* Mobile Call Waiter */}
+          {tableNumber && (
+            <NavIconBtn
+              onClick={handleCallWaiter}
+              title={waiterNotified ? 'Waiter Notified' : 'Call Waiter'}
+              className={cn('sm:hidden', waiterNotified ? 'text-emerald-500' : 'text-amber-500')}
+            >
+              {waiterNotified ? <Check className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+            </NavIconBtn>
+          )}
+
           {/* Mobile search */}
           <NavIconBtn
             onClick={() => onOpenSearch ? onOpenSearch() : navigate('/menu')}

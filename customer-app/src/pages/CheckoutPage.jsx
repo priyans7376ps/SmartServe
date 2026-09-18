@@ -101,7 +101,7 @@ export default function CheckoutPage() {
             key: clientKeyId,
             amount: amount,
             currency: currency || 'INR',
-            name: restaurantName || 'SmartServe Bistro',
+            name: restaurantName || 'SmartServe',
             description: `Order #${orderNumber}`,
             order_id: razorpay_order_id,
             prefill: {

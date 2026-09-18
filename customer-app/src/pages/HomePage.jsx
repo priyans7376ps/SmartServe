@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Search, Flame, Star, Tag, ArrowRight, Utensils, Sparkles } from 'lucide-react';
 import { useCategories } from '../hooks/useCategories';
 import { useMenu } from '../hooks/useMenu';
+import { useTableStore } from '../store/useTableStore';
 import FoodCard from '../components/ui/FoodCard';
 import CategoryCard from '../components/ui/CategoryCard';
 import Button from '../components/ui/Button';
@@ -67,6 +68,7 @@ export default function HomePage({ onOpenSearch }) {
   const navigate = useNavigate();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
+  const { restaurantName, restaurantAddress, restaurantOpeningTime, restaurantClosingTime } = useTableStore();
   const { categories, isLoading: isLoadingCats } = useCategories();
   const { specials, recommended, isLoadingSpecials, isLoadingRecommended } = useMenu();
 
@@ -99,7 +101,7 @@ export default function HomePage({ onOpenSearch }) {
             >
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-500/15 border border-brand-500/30 rounded-full text-brand-400 text-label font-bold uppercase tracking-wider mb-4">
                 <Sparkles className="w-3 h-3" aria-hidden="true" />
-                Table-side Digital Ordering
+                {restaurantName ? `Welcome to ${restaurantName}` : 'Table-side Digital Ordering'}
               </div>
 
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-extrabold leading-[1.1] tracking-tight mb-3">
@@ -108,7 +110,9 @@ export default function HomePage({ onOpenSearch }) {
               </h1>
 
               <p className="text-sm sm:text-base text-white/70 font-medium max-w-md leading-relaxed mb-6">
-                Browse our chef-curated menu, customize your order, and track live kitchen preparation — all from your table.
+                {restaurantAddress
+                  ? `${restaurantName ? `${restaurantName} — ` : ''}${restaurantAddress}. Order chef-curated dishes directly from your table.`
+                  : 'Browse our chef-curated menu, customize your order, and track live kitchen preparation — all from your table.'}
               </p>
 
               <div className="flex flex-wrap gap-3">

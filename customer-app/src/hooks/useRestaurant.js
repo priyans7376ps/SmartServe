@@ -9,18 +9,26 @@ export function useRestaurant() {
   const query = useQuery({
     queryKey: ['customer', 'restaurant'],
     queryFn: () => restaurantApi.getRestaurantDetails(),
-    staleTime: 1000 * 60 * 2, // 2 minutes
+    staleTime: 1000 * 30, // 30 seconds
     refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   useEffect(() => {
-    if (query.data && query.data.name) {
-      setRestaurantDetails(query.data);
+    const raw = query.data;
+    const rest = raw?.data || raw;
+    if (rest && (rest.name || rest.id)) {
+      setRestaurantDetails(rest);
+      if (typeof document !== 'undefined' && rest.name) {
+        document.title = `${rest.name} - SmartServe`;
+      }
     }
   }, [query.data, setRestaurantDetails]);
 
+  const resolvedData = query.data?.data || query.data || null;
+
   return {
-    restaurant: query.data || null,
+    restaurant: resolvedData,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

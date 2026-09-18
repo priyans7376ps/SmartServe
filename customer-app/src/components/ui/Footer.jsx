@@ -16,7 +16,7 @@ const NAV_ITEMS = [
 export default function Footer() {
   const location = useLocation();
   const { getItemCount } = useCartStore();
-  const { restaurantName } = useTableStore();
+  const { restaurantName, restaurantAddress } = useTableStore();
   const itemCount = getItemCount();
 
   const isActive = (path) => location.pathname === path;
@@ -27,7 +27,8 @@ export default function Footer() {
       <footer className="hidden md:block border-t border-subtle bg-surface-1 py-6 mt-12" role="contentinfo">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-caption text-ink-muted font-medium">
-            {restaurantName ? `${restaurantName} · SmartServe` : 'SmartServe'} &copy; {new Date().getFullYear()} · Digital Table Ordering System
+            {restaurantName ? `${restaurantName}` : 'SmartServe'} &copy; {new Date().getFullYear()} · Digital Table Ordering System
+            {restaurantAddress && <span className="hidden sm:inline"> · {restaurantAddress}</span>}
           </p>
           <nav className="flex items-center gap-6" aria-label="Footer navigation">
             {NAV_ITEMS.map(({ path, label }) => (

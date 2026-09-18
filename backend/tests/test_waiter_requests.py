@@ -51,7 +51,8 @@ async def test_customer_call_waiter_and_kitchen_flow(client: AsyncClient):
     # 5. Kitchen fetches pending requests
     kitchen_reqs = await client.get("/api/v1/kitchen/waiter-requests", headers=kitchen_headers)
     assert kitchen_reqs.status_code == 200
-    req_list = kitchen_reqs.json()
+    res_body = kitchen_reqs.json()
+    req_list = res_body.get("data", res_body) if isinstance(res_body, dict) else res_body
     assert any(r["id"] == request_id and str(r["table_number"]) == "4" for r in req_list)
 
     # 6. Kitchen acknowledges the request

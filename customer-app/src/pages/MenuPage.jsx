@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ArrowUpDown, Frown, X } from 'lucide-react';
 import { useCategories } from '../hooks/useCategories';
 import { useMenu } from '../hooks/useMenu';
+import { useTableStore } from '../store/useTableStore';
 import FoodCard from '../components/ui/FoodCard';
 import CategoryCard from '../components/ui/CategoryCard';
 import FilterDrawer from '../components/ui/FilterDrawer';
@@ -47,6 +48,7 @@ export default function MenuPage() {
   const [sortOption, setSortOption]   = useState('name');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
+  const { restaurantName } = useTableStore();
   const { categories, isLoading: isLoadingCats } = useCategories();
 
   const menuQueryParams = useMemo(() => {
@@ -98,7 +100,9 @@ export default function MenuPage() {
       {/* ── PAGE HEADER ──────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-h1 font-display font-extrabold text-ink-primary">Restaurant Menu</h1>
+          <h1 className="text-h1 font-display font-extrabold text-ink-primary">
+            {restaurantName ? `${restaurantName} Menu` : 'Restaurant Menu'}
+          </h1>
           <p className="text-caption text-ink-muted mt-1 font-medium">
             Explore our chef-crafted selection of starters, mains, and desserts.
           </p>
